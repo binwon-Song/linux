@@ -111,7 +111,7 @@ int __weak arch_asym_cpu_priority(int cpu)
  * The margin used when comparing CPU capacities.
  * is 'cap1' noticeably greater than 'cap2'
  *
- * (default: ~5%)
+ * (default: ~5%)ㅌ
  */
 #define capacity_greater(cap1, cap2) ((cap1) * 1024 > (cap2) * 1078)
 #endif
@@ -1458,6 +1458,7 @@ static unsigned int task_scan_start(struct task_struct *p)
 		period *= refcount_read(&ng->refcount);
 		period *= shared + 1;
 		period /= private + shared + 1;
+		printk(KERN_DEBUG,"[task_scan_start] shared = %lu  private : %lu\n",shared,private);
 	}
 	rcu_read_unlock();
 
@@ -1485,6 +1486,9 @@ static unsigned int task_scan_max(struct task_struct *p)
 		period /= private + shared + 1;
 
 		smax = max(smax, period);
+		/////////////////////
+		printk(KERN_DEBUG,"[task_scan_max] shared = %lu  private : %lu\n",shared,private);
+		/////////////////////
 	}
 
 	return max(smin, smax);
@@ -1551,7 +1555,9 @@ static inline unsigned long group_faults(struct task_struct *p, int nid)
 
 	if (!ng)
 		return 0;
-
+	/////////////////
+	printk(KERN_DEBUG,"[group_faults] nid = %d\n",nid);
+	/////////////////
 	return ng->faults[task_faults_idx(NUMA_MEM, nid, 0)] +
 		ng->faults[task_faults_idx(NUMA_MEM, nid, 1)];
 }
@@ -1569,6 +1575,7 @@ static inline unsigned long group_faults_priv(struct numa_group *ng)
 
 	for_each_online_node(node) {
 		faults += ng->faults[task_faults_idx(NUMA_MEM, node, 1)];
+		printk(KERN_DEBUG,"[group_faults_priv] faults = %lu, node id=%d\n", faults,node);
 	}
 
 	return faults;
@@ -1581,6 +1588,7 @@ static inline unsigned long group_faults_shared(struct numa_group *ng)
 
 	for_each_online_node(node) {
 		faults += ng->faults[task_faults_idx(NUMA_MEM, node, 0)];
+		printk(KERN_DEBUG,"[group_faults_shared] faults = %lu, node id=%d\n", faults,node);
 	}
 
 	return faults;
@@ -2402,6 +2410,7 @@ static void task_numa_find_cpu(struct task_numa_env *env,
 
 static int task_numa_migrate(struct task_struct *p)
 {
+	
 	struct task_numa_env env = {
 		.p = p,
 
@@ -2414,6 +2423,9 @@ static int task_numa_migrate(struct task_struct *p)
 		.best_imp = 0,
 		.best_cpu = -1,
 	};
+	////////////////////
+	printk(KERN_DEBUG,"[task_numa_migrate] task_numa_env src_nid %d\n",env.src_nid);
+	///////////////////
 	unsigned long taskweight, groupweight;
 	struct sched_domain *sd;
 	long taskimp, groupimp;
@@ -2449,6 +2461,11 @@ static int task_numa_migrate(struct task_struct *p)
 	}
 
 	env.dst_nid = p->numa_preferred_nid;
+
+	///////////////
+	printk(KERN_DEBUG,"[task_numa_migrate] task_numa_env dst_nid %d\n",env.dst_nid);
+	///////////////
+
 	dist = env.dist = node_distance(env.src_nid, env.dst_nid);
 	taskweight = task_weight(p, env.src_nid, dist);
 	groupweight = group_weight(p, env.src_nid, dist);
@@ -2459,7 +2476,9 @@ static int task_numa_migrate(struct task_struct *p)
 
 	/* Try to find a spot on the preferred nid. */
 	task_numa_find_cpu(&env, taskimp, groupimp);
-
+	///////////////
+	printk(KERN_DEBUG,"[task_numa_migrate] task_numa_find_cpu dst_cpu : %d\n",env.dst_cpu);
+	///////////////
 	/*
 	 * Look at other nodes in these cases:
 	 * - there is no space available on the preferred_nid
@@ -3070,6 +3089,10 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	int local = !!(flags & TNF_FAULT_LOCAL);
 	struct numa_group *ng;
 	int priv;
+	////////////
+	printk(KERN_DEBUG,"[task_numa_fault] task_numa_fault mem_node %d\n",mem_node);
+	printk(KERN_DEBUG,"[task_numa_fault] variable local  : %d priv : %d \n pages : %d",local,priv,pages);
+	////////////
 
 	if (!static_branch_likely(&sched_numa_balancing))
 		return;
@@ -3105,9 +3128,9 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	 * to be private if the accessing pid has not changed
 	 */
 	if (unlikely(last_cpupid == (-1 & LAST_CPUPID_MASK))) {
-		priv = 1;
+		priv = 1; // private
 	} else {
-		priv = cpupid_match_pid(p, last_cpupid);
+		priv = cpupid_match_pid(p, last_cpupid);  // if 0 is shared fault
 		if (!priv && !(flags & TNF_NO_GROUP))
 			task_numa_group(p, last_cpupid, flags, &priv);
 	}
