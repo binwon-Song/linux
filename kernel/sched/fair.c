@@ -3091,7 +3091,8 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	int priv;
 	////////////
 	printk("[task_numa_fault] task_numa_fault mem_node %d\n",mem_node);
-	printk("[task_numa_fault] variable local  : %d priv : %d \n pages : %d",local,priv,pages);
+	printk("[task_numa_fault] variable local  : %d   priv : %d    pages : %d",local,priv,pages);
+	printk("[task_numa_fault] remote : %lu  local : %lu  migrate fail : %ul \n",p->numa_faults_locality[0],p->numa_faults_locality[1],p->numa_faults_locality[2]);
 	////////////
 
 	if (!static_branch_likely(&sched_numa_balancing))
