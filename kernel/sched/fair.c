@@ -3091,9 +3091,9 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	struct numa_group *ng;
 	int priv;
 	////////////
-	printk("[task_numa_fault] task_numa_fault mem_node %d   last_cpuid : %d   task's pid : %d \n",mem_node,last_cpuid,p->pid);
+	printk("[task_numa_fault] task_numa_fault mem_node %d   cpu node : %d   task's pid : %d \n",mem_node,cpu_node,p->pid);
 	printk("[task_numa_fault] variable local  : %d   priv : %d    pages : %d",local,priv,pages);
-	printk("[task_numa_fault] remote : %lu  local : %lu  migrate fail : %ul \n",p->numa_faults_locality[0],p->numa_faults_locality[1],p->numa_faults_locality[2]);
+	printk("[task_numa_fault] remote : %lu  local : %lu  migrate fail : %lu \n",p->numa_faults_locality[0],p->numa_faults_locality[1],p->numa_faults_locality[2]);
 
 	////////////
 
