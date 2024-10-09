@@ -1444,6 +1444,7 @@ static unsigned int task_scan_min(struct task_struct *p)
 
 static unsigned int task_scan_start(struct task_struct *p)
 {
+	printk("[task scan start]\n");
 	unsigned long smin = task_scan_min(p);
 	unsigned long period = smin;
 	struct numa_group *ng;
@@ -1544,7 +1545,7 @@ static inline unsigned long task_faults(struct task_struct *p, int nid)
 {
 	if (!p->numa_faults)
 		return 0;
-
+	printk("[task_faults] task's pid = %d\n",p->pid);
 	return p->numa_faults[task_faults_idx(NUMA_MEM, nid, 0)] +
 		p->numa_faults[task_faults_idx(NUMA_MEM, nid, 1)];
 }
@@ -3090,9 +3091,10 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	struct numa_group *ng;
 	int priv;
 	////////////
-	printk("[task_numa_fault] task_numa_fault mem_node %d\n",mem_node);
+	printk("[task_numa_fault] task_numa_fault mem_node %d   last_cpuid : %d   task's pid : %d \n",mem_node,last_cpuid,p->pid);
 	printk("[task_numa_fault] variable local  : %d   priv : %d    pages : %d",local,priv,pages);
 	printk("[task_numa_fault] remote : %lu  local : %lu  migrate fail : %ul \n",p->numa_faults_locality[0],p->numa_faults_locality[1],p->numa_faults_locality[2]);
+
 	////////////
 
 	if (!static_branch_likely(&sched_numa_balancing))
