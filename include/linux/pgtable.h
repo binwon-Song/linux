@@ -1443,6 +1443,18 @@ static inline int pud_trans_unstable(pud_t *pud)
  * So, to reliably identify PROT_NONE PTEs that require a NUMA hinting fault,
  * looking at the VMA accessibility is sufficient.
  */
+/*
+ * 접근 불가능한 (PROT_NONE) VMA에서는 pte_protnone()이 "예"를 나타낼 수 있습니다.
+ * 이 경우 "아니오"를 나타내는 것도 완전히 유효하므로, 기본 구현은 "항상 아니오"로
+ * 설정됩니다.
+ *
+ * 그러나 접근 가능한 VMA에서는 pte_protnone()이 NUMA 힌팅으로 인해 PROT_NONE
+ * 페이지 보호를 신뢰성 있게 나타냅니다. NUMA 힌팅 폴트는 접근 가능한 VMA에서만
+ * 적용됩니다.
+ *
+ * 따라서, NUMA 힌팅 폴트가 필요한 PROT_NONE PTE를 신뢰성 있게 식별하려면,
+ * VMA 접근 가능성을 확인하는 것으로 충분합니다.
+ */
 static inline int pte_protnone(pte_t pte)
 {
 	return 0;

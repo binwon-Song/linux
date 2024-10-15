@@ -1770,6 +1770,15 @@ static bool pgdat_free_space_enough(struct pglist_data *pgdat)
  * The smaller the hint page fault latency, the higher the possibility
  * for the page to be hot.
  */
+/**
+ * @brief 힌트 페이지 폴트 지연 시간을 계산한다.
+ * 메모리 티어링 모드에서 페이지 테이블이 스캔될때 스캔 시간은 페이지에 기록됨
+ * 느린 메모리 페이지를 위해 페이지를 PROT_NONE으로 만들어줌
+ * 페이지가 액세스 될때, 힌트 페이지 폴트는 다음과 같이 계산됨
+ * hint page fault latency = hint page fault time - scan time
+ * 힌트 페이지 폴트 지연 시간이 작을수록 페이지가 핫일 가능성이 높음
+ * 
+ */
 static int numa_hint_fault_latency(struct folio *folio)
 {
 	int last_time, time;
@@ -1784,6 +1793,11 @@ static int numa_hint_fault_latency(struct folio *folio)
  * For memory tiering mode, too high promotion/demotion throughput may
  * hurt application latency.  So we provide a mechanism to rate limit
  * the number of pages that are tried to be promoted.
+ */
+/**
+ * @brief 프로모션 시도 페이지수 제한
+ * 메모리 티어링에서 너무 높은 프로모션/강등 처리량은 애플리케이션 지연에 영향을 줄 수 있음
+ * 따라서 프로모션을 시도하는 페이지 수를 제한하는 메커니즘을 제공함
  */
 static bool numa_promotion_rate_limit(struct pglist_data *pgdat,
 				      unsigned long rate_limit, int nr)
@@ -1832,6 +1846,11 @@ static void numa_promotion_adjust_threshold(struct pglist_data *pgdat,
 	}
 }
 
+/**
+ * @brief
+ * 주어진 페이지를 노드 간 마이그레이션 여부 결정.
+ * 
+ */
 bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 				int src_nid, int dst_cpu)
 {
@@ -1843,6 +1862,10 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 	 * The pages in slow memory node should be migrated according
 	 * to hot/cold instead of private/shared.
 	 */
+	/*
+	 * 느린 메모리에 속해있는 페이지는 private/shared 대신 hot/cold에 따라 마이그레이션 되어야 함
+	 * memory only NUMA node는 lower 티어
+	 */ 
 	if (sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING &&
 	    !node_is_toptier(src_nid)) {
 		struct pglist_data *pgdat;
@@ -1870,9 +1893,19 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 						  folio_nr_pages(folio));
 	}
 
+	/*
+	 * 현재 pid와 페이지의 마지막 pid비교
+	 * 페이지의 마지막 pid가 현재 pid와 같으면 마이그레이션 
+	 */
 	this_cpupid = cpu_pid_to_cpupid(dst_cpu, current->pid);
+	/*
+	* static inline int folio_xchg_last_cpupid(struct folio *folio, int cpupid)
+	*	{
+	*		return xchg(&folio->_last_cpupid, cpupid & LAST_CPUPID_MASK); folio의 마지막 cpupid를 cpupid로 교환
+	*	}
+	*/
 	last_cpupid = folio_xchg_last_cpupid(folio, this_cpupid);
-
+	printk("[should_numa_migrate_memory] this_cpupid = %d, last_cpupid = %d, task's pid\n",this_cpupid,last_cpupid,current->pid);
 	if (!(sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING) &&
 	    !node_is_toptier(src_nid) && !cpupid_valid(last_cpupid))
 		return false;
@@ -1882,6 +1915,10 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 	 * the lifetime of a task. The magic number 4 is based on waiting for
 	 * two full passes of the "multi-stage node selection" test that is
 	 * executed below.
+	 */
+	/*
+	 * 첫 번째 faults 또는 private faults는 task의 초기 단계에서 즉시 마이그레이션 허용 
+	 * 매직넘버 4는 아래에서 실행되는 "multi-stage node selection" 테스트의 두 번의 전체 패스를 기다리는 것에 기반함
 	 */
 	if ((p->numa_preferred_nid == NUMA_NO_NODE || p->numa_scan_seq <= 4) &&
 	    (cpupid_pid_unset(last_cpupid) || cpupid_match_pid(p, last_cpupid)))
@@ -1903,6 +1940,18 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 	 *
 	 * This quadric squishes small probabilities, making it less likely we
 	 * act on an unlikely task<->page relation.
+	 */
+
+	/**
+	 * 다단계 노드 선택은 주기적인 마이그레이션 faults와 함께 사용되어 임시적인 task<->page 관계를 구축함
+	 * 두 단계 필터를 사용하여 짧고 불가능한 관계를 제거함
+	 * 
+	 * 빈도주의 확률에 따라 P(p) ~ n_p / n_t를 사용하여, 
+	 * 특정 시간 동안 특정 페이지(n_p)를 사용하는 작업의 사용량을 이 페이지의 총 사용량(n_t)으로 나눈 값을 확률로 나타낼 수 있습니다.
+	 * 
+	 * 주기적 폴트 시간에 이 확률을 샘플링하고, 이 샘플이 완전히 독립적이라면, 이 샘플이 충분히 짧은 경우 사용 패턴에 비해 샘플 기간이 충분히 짧다면, 두 번 연속으로 동일한 결과를 얻을 수 있음
+	 * 
+	 * 이 2차 함수는 작은 확률을 압축하여 불가능한 task<->page 관계에 대해 작동할 가능성을 줄임
 	 */
 	if (!cpupid_pid_unset(last_cpupid) &&
 				cpupid_to_nid(last_cpupid) != dst_nid)
@@ -2162,6 +2211,9 @@ static bool load_too_imbalanced(long src_load, long dst_load,
  * be improved if the source tasks was migrated to the target dst_cpu taking
  * into account that it might be best if task running on the dst_cpu should
  * be exchanged with the source task
+ */
+/**
+ * @brief 태스크를 옮기는게 성능 향상이 일어나는지 확인하는 함수
  */
 static bool task_numa_compare(struct task_numa_env *env,
 			      long taskimp, long groupimp, bool maymove)
@@ -3082,6 +3134,9 @@ void task_numa_free(struct task_struct *p, bool final)
 /*
  * Got a PROT_NONE fault for a page on @node.
  */
+/*
+ * NUMA 페이지 폴트를 처리하는 함수 
+ */
 void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 {
 	struct task_struct *p = current;
@@ -3092,7 +3147,7 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	int priv;
 	////////////
 	printk("[task_numa_fault] task_numa_fault mem_node %d   cpu node : %d   task's pid : %d \n",mem_node,cpu_node,p->pid);
-	printk("[task_numa_fault] variable local  : %d   priv : %d    pages : %d",local,priv,pages);
+	printk("[task_numa_fault] local  : %d   priv : %d  pages : %d\n",local,priv,pages);
 	printk("[task_numa_fault] remote : %lu  local : %lu  migrate fail : %lu \n",p->numa_faults_locality[0],p->numa_faults_locality[1],p->numa_faults_locality[2]);
 
 	////////////
@@ -3230,6 +3285,8 @@ static void task_numa_work(struct callback_head *work)
 	struct vma_iterator vmi;
 	bool vma_pids_skipped;
 	bool vma_pids_forced = false;
+	/////// for page migration ////
+	struct folio *folio = NULL;
 
 	SCHED_WARN_ON(p != container_of(work, struct task_struct, numa_work));
 
@@ -3313,11 +3370,17 @@ retry_pids:
 		 * hinting faults in read-only file-backed mappings or the vdso
 		 * as migrating the pages will be of marginal benefit.
 		 */
-		if (!vma->vm_mm ||
-		    (vma->vm_file && (vma->vm_flags & (VM_READ|VM_WRITE)) == (VM_READ))) {
-			trace_sched_skip_vma_numa(mm, vma, NUMAB_SKIP_SHARED_RO);
-			continue;
-		}
+		/**
+		 * 공유 라이브러리 페이지는 여러 프로세스에 의해 매핑되어 있으므로 마이그레이션 안함
+		 * 읽기 전용 파일 백드 매핑이나 vdso에서 힌팅 폴트를 피하고 페이지를 마이그레이션하는 것은 미미한 이점이 있을 것이다.
+		 */
+
+		// 공유 데이터를 옮겨야하기 때문에 주석처리
+		// if (!vma->vm_mm ||
+		//     (vma->vm_file && (vma->vm_flags & (VM_READ|VM_WRITE)) == (VM_READ))) {
+		// 	trace_sched_skip_vma_numa(mm, vma, NUMAB_SKIP_SHARED_RO);
+		// 	continue;
+		// }
 
 		/*
 		 * Skip inaccessible VMAs to avoid any confusion between
@@ -3393,7 +3456,7 @@ retry_pids:
 			end = ALIGN(start + (pages << PAGE_SHIFT), HPAGE_SIZE);
 			end = min(end, vma->vm_end);
 			nr_pte_updates = change_prot_numa(vma, start, end);
-
+			printk("[task_numa_work] change_prot_numa start : ",vma);
 			/*
 			 * Try to scan sysctl_numa_balancing_size worth of
 			 * hpages that have at least one present PTE that
@@ -3402,6 +3465,14 @@ retry_pids:
 			 * PTEs, scan up to virtpages, to skip through those
 			 * areas faster.
 			 */
+
+			/*
+			 * 최소 하나의 존재하는 PTE가 있고 아직 pte-numa가 아닌 hpages를
+			 * sysctl_numa_balancing_size만큼 스캔하려고 시도합니다. VMA가
+			 * 사용되지 않거나 이미 prot_numa PTE로 가득 찬 영역을 포함하고
+			 * 있다면, 이러한 영역을 더 빨리 건너뛰기 위해 virtpages만큼
+			 * 스캔합니다.
+			*/
 			if (nr_pte_updates)
 				pages -= (end - start) >> PAGE_SHIFT;
 			virtpages -= (end - start) >> PAGE_SHIFT;

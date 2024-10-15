@@ -642,13 +642,16 @@ out:
 	return pfn_to_page(pfn);
 }
 
+/*
+ * folio는 페이지의 헤더를 가져옴
+ */
 struct folio *vm_normal_folio(struct vm_area_struct *vma, unsigned long addr,
 			    pte_t pte)
 {
 	struct page *page = vm_normal_page(vma, addr, pte);
 
 	if (page)
-		return page_folio(page);
+		return page_folio(page); // 페이지가 있으면 folio로 변환
 	return NULL;
 }
 
@@ -3432,6 +3435,9 @@ static bool wp_can_reuse_anon_folio(struct folio *folio,
  * but allow concurrent faults), with pte both mapped and locked.
  * We return with mmap_lock still held, but pte unmapped and unlocked.
  */
+/*
+ * 공유 페이지 쓰기 접근 발생 페이지 폴트 처리
+ */
 static vm_fault_t do_wp_page(struct vm_fault *vmf)
 	__releases(vmf->ptl)
 {
@@ -4940,8 +4946,9 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 
 	/* Get the normal PTE  */
 	old_pte = ptep_get(vmf->pte);
+	printk("Before modify prot : %lu \n", vmf->vma->vm_page_prot);
 	pte = pte_modify(old_pte, vma->vm_page_prot);
-
+	printk("after modify prot : %lu \n", vma->vm_page_prot);
 	/*
 	 * Detect now whether the PTE could be writable; this information
 	 * is only valid while holding the PT lock.
@@ -4951,7 +4958,7 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	    can_change_pte_writable(vma, vmf->address, pte))
 		writable = true;
 
-	folio = vm_normal_folio(vma, vmf->address, pte);
+	folio = vm_normal_folio(vma, vmf->address, pte); //vma, address, pte로 folio를 가져옴
 	if (!folio || folio_is_zone_device(folio))
 		goto out_map;
 
@@ -4974,6 +4981,10 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	 * Flag if the folio is shared between multiple address spaces. This
 	 * is later used when determining whether to group tasks together
 	 */
+	/**
+	 * 폴리오가 다중 주소 공간 사이에서 공유되는 경우 플래그를 설정합니다.
+	 * 이것은 나중에 작업을 그룹화할지 여부를 결정할 때 사용됩니다.
+	 */
 	if (folio_estimated_sharers(folio) > 1 && (vma->vm_flags & VM_SHARED))
 		flags |= TNF_SHARED;
 
@@ -4983,10 +4994,10 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	 * to record page access time.  So use default value.
 	 */
 	if ((sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING) &&
-	    !node_is_toptier(nid))
+	    !node_is_toptier(nid)) // 메모리만 있는 노드일 경우
 		last_cpupid = (-1 & LAST_CPUPID_MASK);
 	else
-		last_cpupid = folio_last_cpupid(folio);
+		last_cpupid = folio_last_cpupid(folio); // folio의 last_cpupid를 가져옴
 	target_nid = numa_migrate_prep(folio, vma, vmf->address, nid, &flags);
 	if (target_nid == NUMA_NO_NODE) {
 		folio_put(folio);
@@ -5020,6 +5031,10 @@ out_map:
 	/*
 	 * Make it present again, depending on how arch implements
 	 * non-accessible ptes, some can allow access by kernel mode.
+	 */
+	/*
+	 * 아키텍처가 비접근 가능 PTE를 구현하는 방식에 따라, 일부는 커널 모드에서
+	 * 접근을 허용할 수 있습니다. 이를 다시 접근 가능하게 만듭니다.
 	 */
 	old_pte = ptep_modify_prot_start(vma, vmf->address, vmf->pte);
 	pte = pte_modify(old_pte, vma->vm_page_prot);

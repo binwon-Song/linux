@@ -113,6 +113,7 @@ static long change_pte_range(struct mmu_gather *tlb,
 			 * Avoid trapping faults against the zero or KSM
 			 * pages. See similar comment in change_huge_pmd.
 			 */
+			// zero나 KSM 페이지에 대한 faults를 트랩 폴트를 피하기위해 
 			if (prot_numa) {
 				struct folio *folio;
 				int nid;
@@ -526,6 +527,11 @@ long change_protection(struct mmu_gather *tlb,
 	 * Ordinary protection updates (mprotect, uffd-wp, softdirty tracking)
 	 * are expected to reflect their requirements via VMA flags such that
 	 * vma_set_page_prot() will adjust vma->vm_page_prot accordingly.
+	 */
+	/**
+	 * 이는 가상 주소 범위를 접근 불가능하도록 표시하는 데 사용됩니다.
+	 * 이러한 주소들은 나중에 NUMA 힌팅 폴트에 의해 해제됩니다.
+	 * 폴트에 따라 페이지가 더 나은 NUMA 배치를 위해 마이그레이션될 수 있습니다.
 	 */
 	if (cp_flags & MM_CP_PROT_NUMA)
 		newprot = PAGE_NONE;

@@ -89,6 +89,7 @@ extern unsigned long mm_cachebits;
 
 static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 {
+	// 변경되지 않아야하는 부분 유지하고, 변경되어야하는 부분만 변경
 	pte_val(pte) = (pte_val(pte) & _PAGE_CHG_MASK) | pgprot_val(newprot);
 	return pte;
 }

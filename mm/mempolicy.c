@@ -631,14 +631,23 @@ unlock:
  * an architecture makes a different choice, it will need further
  * changes to the core.
  */
+/*
+  * 이는 가상 주소 범위를 접근 불가능하도록 표시하는 데 사용됩니다.
+  * 이러한 주소들은 나중에 NUMA 힌팅 폴트에 의해 해제됩니다. 이러한
+  * 폴트에 따라 페이지가 더 나은 NUMA 배치를 위해 마이그레이션될 수 있습니다.
+  *
+  * 이는 NUMA 폴트가 PROT_NONE을 사용하여 처리된다는 가정하에 작성되었습니다.
+  * 만약 다른 아키텍처가 다른 선택을 한다면, 코어에 추가적인 변경이 필요할 것입니다.
+ */
 unsigned long change_prot_numa(struct vm_area_struct *vma,
 			unsigned long addr, unsigned long end)
 {
 	struct mmu_gather tlb;
 	long nr_updated;
-
 	tlb_gather_mmu(&tlb, vma->vm_mm);
-
+	folio=vm_normal_folio(vma,addr,)
+	
+	printk("[change protection] folio last cpu pid : %d nid : %d\n",folio->_last_cpupid,page_to_nid(&folio->page););
 	nr_updated = change_protection(&tlb, vma, addr, end, MM_CP_PROT_NUMA);
 	if (nr_updated > 0)
 		count_vm_numa_events(NUMA_PTE_UPDATES, nr_updated);

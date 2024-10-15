@@ -196,7 +196,7 @@ API에 대한 모든 설명, 그리고 락킹을 올바르게 처리하는 법�
          make htmldocs
 
 ReST 마크업을 사용하는 문서들은 Documentation/output 에 생성된다.  해당
-문서들은 다음의 커맨드를 사용하면 LaTeX 이나 ePub 로도 만들어질 수 있다::
+문서들은 다음의 커맨드를 사용하면 LaTeX 이나 ePuzb 로도 만들어질 수 있다::
 
          make latexdocs
          make epubdocs

@@ -1642,7 +1642,7 @@ static inline int page_zone_id(struct page *page)
 #ifdef NODE_NOT_IN_PAGE_FLAGS
 extern int page_to_nid(const struct page *page);
 #else
-static inline int page_to_nid(const struct page *page)
+static inline int page_to_nid(const struct page *page) //페이지가 어느 NUMA노드에 속하는지 확인
 {
 	struct page *p = (struct page *)page;
 
@@ -2520,6 +2520,16 @@ extern unsigned long move_page_tables(struct vm_area_struct *vma,
  * because something (e.g., COW, uffd-wp) blocks that from happening for all
  * PTEs automatically in a writable mapping.
  */
+/*
+ * change_protection()에서 사용되는 플래그들입니다. 현재는 비트맵으로 만들어
+ * 여러 플래그를 매개변수처럼 전달할 수 있도록 했습니다. 하지만 현재로서는
+ * 모든 호출자들이 동시에 하나의 플래그만 사용하고 있습니다.
+*/
+/*
+ * 개별 PTE들을 쓰기 가능하게 매핑할 수 있는지 수동으로 확인해야 하는지 여부입니다.
+ * 이는 COW(Copy-On-Write), uffd-wp(Userfaultfd Write Protect)와 같은 것이
+ * 모든 PTE들을 자동으로 쓰기 가능하게 하는 것을 막기 때문입니다.
+*/
 #define  MM_CP_TRY_CHANGE_WRITABLE	   (1UL << 0)
 /* Whether this protection change is for NUMA hints */
 #define  MM_CP_PROT_NUMA                   (1UL << 1)
