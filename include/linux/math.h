@@ -31,6 +31,7 @@
  *
  * Rounds @x down to next multiple of @y (which must be a power of 2).
  * To perform arbitrary rounding down, use rounddown() below.
+ * e.g. round_down(10, 4) = 8
  */
 #define round_down(x, y) ((x) & ~__round_mask(x, y))
 

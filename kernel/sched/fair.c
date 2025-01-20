@@ -233,7 +233,8 @@ void __init sched_init_granularity(void)
 
 #define WMULT_CONST	(~0U)
 #define WMULT_SHIFT	32
-
+// 가중치와 관련된 역수 값을 업데이트
+// 역수를 미리 계산해 나눗셈 연산 피함
 static void __update_inv_weight(struct load_weight *lw)
 {
 	unsigned long w;
@@ -254,7 +255,14 @@ static void __update_inv_weight(struct load_weight *lw)
 /*
  * delta_exec * weight / lw.weight
  *   OR
- * (delta_exec * (weight * lw->inv_weight)) >> WMULT_SHIFT
+ * (delta_exec * (weight * lw->inv_weight)) >> WMULT_SHIFT  //비트 연산으로 최적화	
+ *
+ * 두 경우 모두 weight := NICE_0_LOAD 이고 lw가 sched_prio_to_wmult[] 배열에 있는 경우
+ * 이 경우 shift는 양수가 되도록 보장되며, inv_weight는 32비트를 초과하지 않으므로
+ * NICE_0_LOAD는 또한 10비트를 초과하므로 shift >= 22가 됩니다.
+ *
+ * 또는 weight =< lw.weight (lw.weight가 런큐 가중치이므로)
+ * 따라서 weight/lw.weight <= 1, 따라서 우리의 shift도 양수가 됩니다.
  *
  * Either weight := NICE_0_LOAD and lw \e sched_prio_to_wmult[], in which case
  * we're guaranteed shift stays positive because inv_weight is guaranteed to
@@ -313,7 +321,7 @@ const struct sched_class fair_sched_class;
 #define for_each_sched_entity(se) \
 		for (; se; se = se->parent)
 
-static inline bool list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq)
+static inline bool list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq) // runqueue "owned" by this group on each CPU : 실행 대기열
 {
 	struct rq *rq = rq_of(cfs_rq);
 	int cpu = cpu_of(rq);
@@ -332,6 +340,10 @@ static inline bool list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 	 * tmp_alone_branch either when the branch is connected
 	 * to a tree or when we reach the top of the tree
 	 */
+	// 부모 노드보다 앞에 나타나거나 부모 노드가 우리 뒤에 나타나도록 강제
+	// 바텀 업 방식 아래에서 위로 큐에 넣어야함
+	// 자식이 부모 보다 앞에 있거나 부모가 자식 뒤에 있도록 함
+	// 브랜치가 트리에 연결되거나 최상단에 도달될때 브랜치 리셋함
 	if (cfs_rq->tg->parent &&
 	    cfs_rq->tg->parent->cfs_rq[cpu]->on_list) {
 		/*
@@ -347,6 +359,7 @@ static inline bool list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 		 * reset tmp_alone_branch to the beginning of the
 		 * list.
 		 */
+		// 브랜치가 트리에 연결되었으므로 tmp_alone_branch을 리스트의 시작으로 리셋
 		rq->tmp_alone_branch = &rq->leaf_cfs_rq_list;
 		return true;
 	}
@@ -362,6 +375,7 @@ static inline bool list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 		 * We have reach the top of a tree so we can reset
 		 * tmp_alone_branch to the beginning of the list.
 		 */
+		// 트리의 최상단에 도달했으므로 tmp_alone_branch을 리스트의 시작으로 리셋
 		rq->tmp_alone_branch = &rq->leaf_cfs_rq_list;
 		return true;
 	}
@@ -372,11 +386,14 @@ static inline bool list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 	 * tmp_alone_branch points to the begin of the branch
 	 * where we will add parent.
 	 */
+	// 부모가 없을경우 부모를 우리 뒤에 넣어야함
+	// tmp_alone_branch은 부모를 넣을 위치를 가리킴
 	list_add_rcu(&cfs_rq->leaf_cfs_rq_list, rq->tmp_alone_branch);
 	/*
 	 * update tmp_alone_branch to points to the new begin
 	 * of the branch
 	 */
+	// 부모를 넣었으므로 tmp_alone_branch을 리스트의 시작으로 리셋
 	rq->tmp_alone_branch = &cfs_rq->leaf_cfs_rq_list;
 	return false;
 }
@@ -437,11 +454,13 @@ find_matching_se(struct sched_entity **se, struct sched_entity **pse)
 	 * both tasks until we find their ancestors who are siblings of common
 	 * parent.
 	 */
+	// 선점 테스트는 두 엔티티가 같은 깊이에 있는 동일한 cfs_rq에 있는 형제 엔티티에서 수행될 수 있음
+	// 두 엔티티의 공통 조상을 찾기 위해 두 태스크의 계층 구조를 위로 걸어올라감
 
 	/* First walk up until both entities are at same depth */
 	se_depth = (*se)->depth;
 	pse_depth = (*pse)->depth;
-
+	// 공통 조상 찾기
 	while (se_depth > pse_depth) {
 		se_depth--;
 		*se = parent_entity(*se);
@@ -470,7 +489,7 @@ static int cfs_rq_is_idle(struct cfs_rq *cfs_rq)
 
 static int se_is_idle(struct sched_entity *se)
 {
-	if (entity_is_task(se))
+	if (entity_is_task(se)) // An entity is a task if it doesn't "own" a runqueue
 		return task_has_idle_policy(task_of(se));
 	return cfs_rq_is_idle(group_cfs_rq(se));
 }
@@ -1365,6 +1384,7 @@ unsigned int sysctl_numa_balancing_scan_size = 256;
 unsigned int sysctl_numa_balancing_scan_delay = 1000;
 
 /* The page with hint page fault latency < threshold in ms is considered hot */
+/* 힌팅 폴트 지연율이 임계점보다 작으면 핫 하다고 판정 */
 unsigned int sysctl_numa_balancing_hot_threshold = MSEC_PER_SEC;
 
 struct numa_group {
@@ -1444,7 +1464,6 @@ static unsigned int task_scan_min(struct task_struct *p)
 
 static unsigned int task_scan_start(struct task_struct *p)
 {
-	printk("[task scan start]\n");
 	unsigned long smin = task_scan_min(p);
 	unsigned long period = smin;
 	struct numa_group *ng;
@@ -1459,7 +1478,6 @@ static unsigned int task_scan_start(struct task_struct *p)
 		period *= refcount_read(&ng->refcount);
 		period *= shared + 1;
 		period /= private + shared + 1;
-		printk("[task_scan_start] shared = %lu  private : %lu\n",shared,private);
 	}
 	rcu_read_unlock();
 
@@ -1488,7 +1506,6 @@ static unsigned int task_scan_max(struct task_struct *p)
 
 		smax = max(smax, period);
 		/////////////////////
-		printk("[task_scan_max] shared = %lu  private : %lu\n",shared,private);
 		/////////////////////
 	}
 
@@ -1545,7 +1562,6 @@ static inline unsigned long task_faults(struct task_struct *p, int nid)
 {
 	if (!p->numa_faults)
 		return 0;
-	printk("[task_faults] task's pid = %d\n",p->pid);
 	return p->numa_faults[task_faults_idx(NUMA_MEM, nid, 0)] +
 		p->numa_faults[task_faults_idx(NUMA_MEM, nid, 1)];
 }
@@ -1556,9 +1572,6 @@ static inline unsigned long group_faults(struct task_struct *p, int nid)
 
 	if (!ng)
 		return 0;
-	/////////////////
-	printk("[group_faults] nid = %d\n",nid);
-	/////////////////
 	return ng->faults[task_faults_idx(NUMA_MEM, nid, 0)] +
 		ng->faults[task_faults_idx(NUMA_MEM, nid, 1)];
 }
@@ -1576,7 +1589,6 @@ static inline unsigned long group_faults_priv(struct numa_group *ng)
 
 	for_each_online_node(node) {
 		faults += ng->faults[task_faults_idx(NUMA_MEM, node, 1)];
-		printk("[group_faults_priv] faults = %lu, node id=%d\n", faults,node);
 	}
 
 	return faults;
@@ -1589,7 +1601,6 @@ static inline unsigned long group_faults_shared(struct numa_group *ng)
 
 	for_each_online_node(node) {
 		faults += ng->faults[task_faults_idx(NUMA_MEM, node, 0)];
-		printk("[group_faults_shared] faults = %lu, node id=%d\n", faults,node);
 	}
 
 	return faults;
@@ -1798,6 +1809,10 @@ static int numa_hint_fault_latency(struct folio *folio)
  * @brief 프로모션 시도 페이지수 제한
  * 메모리 티어링에서 너무 높은 프로모션/강등 처리량은 애플리케이션 지연에 영향을 줄 수 있음
  * 따라서 프로모션을 시도하는 페이지 수를 제한하는 메커니즘을 제공함
+ * @param pgdat 프로모션 후보 페이지 수를 계산할 노드
+ * @param rate_limit 프로모션 후보 페이지 수 제한 값
+ * @param nr 현재 노드의 승격 후보 페이지 수
+ * @return 프로모션 후보 페이지 수 차이가 제한 값보다 크면 true, 아니면 false
  */
 static bool numa_promotion_rate_limit(struct pglist_data *pgdat,
 				      unsigned long rate_limit, int nr)
@@ -1806,13 +1821,17 @@ static bool numa_promotion_rate_limit(struct pglist_data *pgdat,
 	unsigned int now, start;
 
 	now = jiffies_to_msecs(jiffies);
-	mod_node_page_state(pgdat, PGPROMOTE_CANDIDATE, nr);
-	nr_cand = node_page_state(pgdat, PGPROMOTE_CANDIDATE);
+	mod_node_page_state(pgdat, PGPROMOTE_CANDIDATE, nr); // 현재 노드의 승격 후보 페이지 수 업데이트
+	nr_cand = node_page_state(pgdat, PGPROMOTE_CANDIDATE); // 현재 노드의 승격 후보 페이지 수
 	start = pgdat->nbp_rl_start;
+	/*
+	* 1초 이상 지나면, 속도 제한 기간 시작 시간을 현재 시간으로 업데이트
+	* 제한 비율 구간 후보 수 => 후보 수
+	*/
 	if (now - start > MSEC_PER_SEC &&
 	    cmpxchg(&pgdat->nbp_rl_start, start, now) == start)
-		pgdat->nbp_rl_nr_cand = nr_cand;
-	if (nr_cand - pgdat->nbp_rl_nr_cand >= rate_limit)
+		pgdat->nbp_rl_nr_cand = nr_cand; // numa balancing promotion rate limit number of candidate
+	if (nr_cand - pgdat->nbp_rl_nr_cand >= rate_limit) // 프로모션 후보 페이지 수 차이가 제한 값보다 크면 마이그레이션 안함
 		return true;
 	return false;
 }
@@ -1828,21 +1847,21 @@ static void numa_promotion_adjust_threshold(struct pglist_data *pgdat,
 
 	now = jiffies_to_msecs(jiffies);
 	th_period = sysctl_numa_balancing_scan_period_max;
-	start = pgdat->nbp_th_start;
-	if (now - start > th_period &&
-	    cmpxchg(&pgdat->nbp_th_start, start, now) == start) {
+	start = pgdat->nbp_th_start; // 프로모션 임계점 시작 시간                                                                                                                                                                                                                                                                                                               
+	if (now - start > th_period && // 현재 시간과 프로모션 임계점 시작 시간의 차이가 프로모션 스캔 주기보다 크면
+	    cmpxchg(&pgdat->nbp_th_start, start, now) == start) { // 프로모션 임계점 시작 시간을 현재 시간으로 업데이트하고 성공하면
 		ref_cand = rate_limit *
 			sysctl_numa_balancing_scan_period_max / MSEC_PER_SEC;
-		nr_cand = node_page_state(pgdat, PGPROMOTE_CANDIDATE);
-		diff_cand = nr_cand - pgdat->nbp_th_nr_cand;
-		unit_th = ref_th * 2 / NUMA_MIGRATION_ADJUST_STEPS;
-		th = pgdat->nbp_threshold ? : ref_th;
-		if (diff_cand > ref_cand * 11 / 10)
-			th = max(th - unit_th, unit_th);
-		else if (diff_cand < ref_cand * 9 / 10)
-			th = min(th + unit_th, ref_th * 2);
-		pgdat->nbp_th_nr_cand = nr_cand;
-		pgdat->nbp_threshold = th;
+		nr_cand = node_page_state(pgdat, PGPROMOTE_CANDIDATE); // 프로모션 후보 페이지 수
+		diff_cand = nr_cand - pgdat->nbp_th_nr_cand; // 프로모션 해야할 페이지 수 - 임계점 = 임계점 넘은 페이지 수
+		unit_th = ref_th * 2 / NUMA_MIGRATION_ADJUST_STEPS; // 단위 임계점
+		th = pgdat->nbp_threshold ? : ref_th; // 임계점이 없으면 ref_th(1s)로 설정
+		if (diff_cand > ref_cand * 11 / 10) // 임계점 넘은 페이지 수가 제한 비율 구간 후보 수의 110%보다 크면
+			th = max(th - unit_th, unit_th); // 임계점 감소
+		else if (diff_cand < ref_cand * 9 / 10) // 임계점 넘은 페이지 수가 제한 비율 구간 후보 수의 90%보다 작으면
+			th = min(th + unit_th, ref_th * 2); // 임계점 증가
+		pgdat->nbp_th_nr_cand = nr_cand; // 프로모션 후보 페이지 수
+		pgdat->nbp_threshold = th; // 임계점
 	}
 }
 
@@ -1857,7 +1876,7 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 	struct numa_group *ng = deref_curr_numa_group(p);
 	int dst_nid = cpu_to_node(dst_cpu);
 	int last_cpupid, this_cpupid;
-
+	
 	/*
 	 * The pages in slow memory node should be migrated according
 	 * to hot/cold instead of private/shared.
@@ -1872,21 +1891,21 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 		unsigned long rate_limit;
 		unsigned int latency, th, def_th;
 
-		pgdat = NODE_DATA(dst_nid);
-		if (pgdat_free_space_enough(pgdat)) {
+		pgdat = NODE_DATA(dst_nid); // 목적지 노드의 pgdat 가져오기
+		if (pgdat_free_space_enough(pgdat)) { // 빠른 메모리에 free space가 충분하면 마이그레이트 
 			/* workload changed, reset hot threshold */
 			pgdat->nbp_threshold = 0;
 			return true;
 		}
 
-		def_th = sysctl_numa_balancing_hot_threshold;
+		def_th = sysctl_numa_balancing_hot_threshold; // 1s
 		rate_limit = sysctl_numa_balancing_promote_rate_limit << \
-			(20 - PAGE_SHIFT);
-		numa_promotion_adjust_threshold(pgdat, rate_limit, def_th);
+			(20 - PAGE_SHIFT); // 프로모션 후보 페이지 수 제한 값(20 -> 1MB, MB -> PAGE) 65536 M -> 64GB 한번에 승격 페이지 수 조절
+		numa_promotion_adjust_threshold(pgdat, rate_limit, def_th); // 프로모션 임계점 조정
 
 		th = pgdat->nbp_threshold ? : def_th;
 		latency = numa_hint_fault_latency(folio);
-		if (latency >= th)
+		if (latency >= th) // 힌트 페이지 폴트 지연율이 임계점보다 크면 마이그레이션 안함
 			return false;
 
 		return !numa_promotion_rate_limit(pgdat, rate_limit,
@@ -1905,7 +1924,6 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 	*	}
 	*/
 	last_cpupid = folio_xchg_last_cpupid(folio, this_cpupid);
-	printk("[should_numa_migrate_memory] this_cpupid = %d, last_cpupid = %d, task's pid\n",this_cpupid,last_cpupid,current->pid);
 	if (!(sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING) &&
 	    !node_is_toptier(src_nid) && !cpupid_valid(last_cpupid))
 		return false;
@@ -1975,7 +1993,7 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 
 	/*
 	 * Distribute memory according to CPU & memory use on each node,
-	 * with 3/4 hysteresis to avoid unnecessary memory migrations:
+	 * with 3/4 hysteresis to avoid unnecessary memory migrations:(이력 현상 : 경과해 온 상태의 변화 과정에 의존하는 현상)
 	 *
 	 * faults_cpu(dst)   3   faults_cpu(src)
 	 * --------------- * - > ---------------
@@ -2476,9 +2494,7 @@ static int task_numa_migrate(struct task_struct *p)
 		.best_imp = 0,
 		.best_cpu = -1,
 	};
-	////////////////////
-	printk("[task_numa_migrate] task_numa_env src_nid %d\n",env.src_nid);
-	///////////////////
+
 	unsigned long taskweight, groupweight;
 	struct sched_domain *sd;
 	long taskimp, groupimp;
@@ -2494,6 +2510,12 @@ static int task_numa_migrate(struct task_struct *p)
 	 * random movement of tasks -- counter the numa conditions we're trying
 	 * to satisfy here.
 	 */
+// 	1. 가장 낮은 수준의 SD_NUMA 도메인을 선택하는 이유:
+// 		불균형이 가장 작음
+// 		 태스크 이동이 필요할 때 가장 먼저 시작됨
+// 		 태스크 이동 최소화의 필요성:
+// 		 무작위적인 태스크 이동 방지
+// NUMA 최적화 조건 유지
 	rcu_read_lock();
 	sd = rcu_dereference(per_cpu(sd_numa, env.src_cpu));
 	if (sd) {
@@ -2515,9 +2537,6 @@ static int task_numa_migrate(struct task_struct *p)
 
 	env.dst_nid = p->numa_preferred_nid;
 
-	///////////////
-	printk("[task_numa_migrate] task_numa_env dst_nid %d\n",env.dst_nid);
-	///////////////
 
 	dist = env.dist = node_distance(env.src_nid, env.dst_nid);
 	taskweight = task_weight(p, env.src_nid, dist);
@@ -2529,9 +2548,6 @@ static int task_numa_migrate(struct task_struct *p)
 
 	/* Try to find a spot on the preferred nid. */
 	task_numa_find_cpu(&env, taskimp, groupimp);
-	///////////////
-	// printk("[task_numa_migrate] task_numa_find_cpu dst_cpu : %d\n",env.dst_cpu);
-	///////////////
 	/*
 	 * Look at other nodes in these cases:
 	 * - there is no space available on the preferred_nid
@@ -2921,6 +2937,11 @@ static void task_numa_placement(struct task_struct *p)
 			 * little over-all impact on throughput, and thus their
 			 * faults are less important.
 			 */
+			/**
+			 * faults_from을 평균 실행 시간에 따라 정규화하는 이유:
+			 * 실행 시간이 짧은 태스크는 전체 처리량에 미치는 영향이 적음
+			 * 따라서 그룹 내의 페이지 폴트 수를 실행 시간에 따라 가중치를 부여하여 처리량을 최적화
+			 */
 			f_weight = div64_u64(runtime << 16, period + 1);
 			f_weight = (f_weight * p->numa_faults[cpubuf_idx]) /
 				   (total_faults + 1);
@@ -3145,12 +3166,6 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	int local = !!(flags & TNF_FAULT_LOCAL);
 	struct numa_group *ng;
 	int priv;
-	////////////
-	printk("[task_numa_fault] task_numa_fault mem_node %d   cpu node : %d   task's pid : %d \n",mem_node,cpu_node,p->pid);
-	printk("[task_numa_fault] local  : %d   priv : %d  pages : %d\n",local,priv,pages);
-	printk("[task_numa_fault] remote : %lu  local : %lu  migrate fail : %lu \n",p->numa_faults_locality[0],p->numa_faults_locality[1],p->numa_faults_locality[2]);
-
-	////////////
 
 	if (!static_branch_likely(&sched_numa_balancing))
 		return;
@@ -3271,6 +3286,7 @@ static bool vma_is_accessed(struct mm_struct *mm, struct vm_area_struct *vma)
 /*
  * The expensive part of numa migration is done from task_work context.
  * Triggered from task_tick_numa().
+ * 힌팅 폴트 트리거 함수
  */
 static void task_numa_work(struct callback_head *work)
 {
@@ -3285,8 +3301,13 @@ static void task_numa_work(struct callback_head *work)
 	struct vma_iterator vmi;
 	bool vma_pids_skipped;
 	bool vma_pids_forced = false;
-	/////// for page migration ////
-	struct folio *folio = NULL;
+
+	/**
+	 * example
+	 */
+	
+
+	////////////
 
 	SCHED_WARN_ON(p != container_of(work, struct task_struct, numa_work));
 
@@ -3375,12 +3396,11 @@ retry_pids:
 		 * 읽기 전용 파일 백드 매핑이나 vdso에서 힌팅 폴트를 피하고 페이지를 마이그레이션하는 것은 미미한 이점이 있을 것이다.
 		 */
 
-		// 공유 데이터를 옮겨야하기 때문에 주석처리
-		// if (!vma->vm_mm ||
-		//     (vma->vm_file && (vma->vm_flags & (VM_READ|VM_WRITE)) == (VM_READ))) {
-		// 	trace_sched_skip_vma_numa(mm, vma, NUMAB_SKIP_SHARED_RO);
-		// 	continue;
-		// }
+		if (!vma->vm_mm ||
+		    (vma->vm_file && (vma->vm_flags & (VM_READ|VM_WRITE)) == (VM_READ))) {
+			trace_sched_skip_vma_numa(mm, vma, NUMAB_SKIP_SHARED_RO);
+			continue;
+		}
 
 		/*
 		 * Skip inaccessible VMAs to avoid any confusion between
@@ -3455,8 +3475,8 @@ retry_pids:
 			start = max(start, vma->vm_start);
 			end = ALIGN(start + (pages << PAGE_SHIFT), HPAGE_SIZE);
 			end = min(end, vma->vm_end);
+
 			nr_pte_updates = change_prot_numa(vma, start, end);
-			printk("[task_numa_work] change_prot_numa start : ",vma);
 			/*
 			 * Try to scan sysctl_numa_balancing_size worth of
 			 * hpages that have at least one present PTE that

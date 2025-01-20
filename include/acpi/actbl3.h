@@ -219,7 +219,7 @@ struct acpi_srat_cpu_affinity {
 
 struct acpi_srat_mem_affinity {
 	struct acpi_subtable_header header;
-	u32 proximity_domain;
+	u32 proximity_domain; //PXM
 	u16 reserved;		/* Reserved, must be zero */
 	u64 base_address;
 	u64 length;

@@ -4905,6 +4905,12 @@ static vm_fault_t do_fault(struct vm_fault *vmf)
 	return ret;
 }
 
+/**
+ * 폴리오를 마이그레이션 준비하는 함수
+ * @param addr 폴트가 통계 주소
+ * @param flags 폴트 플래그
+ * @return 마이그레이션 준비 상태
+ */
 int numa_migrate_prep(struct folio *folio, struct vm_area_struct *vma,
 		      unsigned long addr, int page_nid, int *flags)
 {
@@ -4913,15 +4919,18 @@ int numa_migrate_prep(struct folio *folio, struct vm_area_struct *vma,
 	/* Record the current PID acceesing VMA */
 	vma_set_access_pid_bit(vma);
 
-	count_vm_numa_event(NUMA_HINT_FAULTS);
-	if (page_nid == numa_node_id()) {
-		count_vm_numa_event(NUMA_HINT_FAULTS_LOCAL);
-		*flags |= TNF_FAULT_LOCAL;
+	count_vm_numa_event(NUMA_HINT_FAULTS); // 힌트 폴트 얼마나 났는지
+	if (page_nid == numa_node_id()) { // 페이지가 현재 노드에 있으면
+		count_vm_numa_event(NUMA_HINT_FAULTS_LOCAL); //로컬에서 얼마나 났는지
+		*flags |= TNF_FAULT_LOCAL; // 로컬에서 폴트 났음을 표시
 	}
 
 	return mpol_misplaced(folio, vma, addr);
 }
 
+/**
+ * 
+ */
 static vm_fault_t do_numa_page(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
@@ -4945,10 +4954,8 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	}
 
 	/* Get the normal PTE  */
-	old_pte = ptep_get(vmf->pte);
-	printk("Before modify prot : %lu \n", vmf->vma->vm_page_prot);
-	pte = pte_modify(old_pte, vma->vm_page_prot);
-	printk("after modify prot : %lu \n", vma->vm_page_prot);
+	old_pte = ptep_get(vmf->pte); // 폴트된 pte 가져옴
+	pte = pte_modify(old_pte, vma->vm_page_prot); // 폴트된 pte를 수정하여 새로운 pte 생성
 	/*
 	 * Detect now whether the PTE could be writable; this information
 	 * is only valid while holding the PT lock.
@@ -4993,13 +5000,16 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	 * For memory tiering mode, cpupid of slow memory page is used
 	 * to record page access time.  So use default value.
 	 */
+	/**
+	 * 티어링 모드에서, 느린 메모리에 있는 페이지의 프로세스 아이디는 페이지 액세스 시간을 위해 사용됨
+	 */
 	if ((sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING) &&
-	    !node_is_toptier(nid)) // 메모리만 있는 노드일 경우
-		last_cpupid = (-1 & LAST_CPUPID_MASK);
+	    !node_is_toptier(nid)) // 티어링 적용되어있고 탑 티어가 아닐경우 
+		last_cpupid = (-1 & LAST_CPUPID_MASK); // 마지막 cpupid 가져옴
 	else
 		last_cpupid = folio_last_cpupid(folio); // folio의 last_cpupid를 가져옴
-	target_nid = numa_migrate_prep(folio, vma, vmf->address, nid, &flags);
-	if (target_nid == NUMA_NO_NODE) {
+	target_nid = numa_migrate_prep(folio, vma, vmf->address, nid, &flags); // 
+	if (target_nid == NUMA_NO_NODE) { // 적합한 노드일 경우 마이그레이트 안함
 		folio_put(folio);
 		goto out_map;
 	}
@@ -5024,8 +5034,8 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	}
 
 out:
-	if (nid != NUMA_NO_NODE)
-		task_numa_fault(last_cpupid, nid, 1, flags);
+	if (nid != NUMA_NO_NODE) // 마이그레이트 실패
+		task_numa_fault(last_cpupid, nid, 1, flags); //폴트 발생
 	return 0;
 out_map:
 	/*
@@ -5037,8 +5047,8 @@ out_map:
 	 * 접근을 허용할 수 있습니다. 이를 다시 접근 가능하게 만듭니다.
 	 */
 	old_pte = ptep_modify_prot_start(vma, vmf->address, vmf->pte);
-	pte = pte_modify(old_pte, vma->vm_page_prot);
-	pte = pte_mkyoung(pte);
+	pte = pte_modify(old_pte, vma->vm_page_prot); 
+	pte = pte_mkyoung(pte); 
 	if (writable)
 		pte = pte_mkwrite(pte, vma);
 	ptep_modify_prot_commit(vma, vmf->address, vmf->pte, old_pte, pte);
@@ -5175,13 +5185,13 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 		}
 	}
 
-	if (!vmf->pte)
+	if (!vmf->pte) // 폴트된 pte가 없는 경우
 		return do_pte_missing(vmf);
 
-	if (!pte_present(vmf->orig_pte))
+	if (!pte_present(vmf->orig_pte)) // original pte가 메모리에 없는 경우 -> swap page
 		return do_swap_page(vmf);
 
-	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
+	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma)) // original pte 가 메모리에 있지만 액세스 할 수 없는경우
 		return do_numa_page(vmf);
 
 	spin_lock(vmf->ptl);

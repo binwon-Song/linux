@@ -645,9 +645,7 @@ unsigned long change_prot_numa(struct vm_area_struct *vma,
 	struct mmu_gather tlb;
 	long nr_updated;
 	tlb_gather_mmu(&tlb, vma->vm_mm);
-	folio=vm_normal_folio(vma,addr,)
-	
-	printk("[change protection] folio last cpu pid : %d nid : %d\n",folio->_last_cpupid,page_to_nid(&folio->page););
+
 	nr_updated = change_protection(&tlb, vma, addr, end, MM_CP_PROT_NUMA);
 	if (nr_updated > 0)
 		count_vm_numa_events(NUMA_PTE_UPDATES, nr_updated);
@@ -2486,6 +2484,12 @@ static void sp_free(struct sp_node *n)
  * Return: NUMA_NO_NODE if the page is in a node that is valid for this
  * policy, or a suitable node ID to allocate a replacement folio from.
  */
+/**
+ * 폴리오가 현재 메모리 정책에 맞는 노드에 있는지 확인함
+ * 정책에 맞지 않는 경우 적절한 노드 ID를 반환
+ * NUMA_NO_NODE는 적절한 노드에 배치되어있음을 의미
+ * 
+ */
 int mpol_misplaced(struct folio *folio, struct vm_area_struct *vma,
 		   unsigned long addr)
 {
@@ -2546,6 +2550,7 @@ int mpol_misplaced(struct folio *folio, struct vm_area_struct *vma,
 	}
 
 	/* Migrate the folio towards the node whose CPU is referencing it */
+	/* CPU가 참조하는 노드로 폴리오를 마이그레이션 */
 	if (pol->flags & MPOL_F_MORON) {
 		polnid = thisnid;
 

@@ -166,18 +166,19 @@ static const struct attribute_group *memtier_dev_groups[] = {
 	&memtier_dev_group,
 	NULL
 };
-
+// 메모리 유형을 기반으로 메모리 계층을 찾거나 생성하는 함수
+// @return 주어진 파라미터의 메모리 계층을 찾거나 생성하여 반환
 static struct memory_tier *find_create_memory_tier(struct memory_dev_type *memtype)
 {
 	int ret;
 	bool found_slot = false;
 	struct memory_tier *memtier, *new_memtier;
 	int adistance = memtype->adistance;
-	unsigned int memtier_adistance_chunk_size = MEMTIER_CHUNK_SIZE;
+	unsigned int memtier_adistance_chunk_size = MEMTIER_CHUNK_SIZE; // 128
 
 	lockdep_assert_held_once(&memory_tier_lock);
 
-	adistance = round_down(adistance, memtier_adistance_chunk_size);
+	adistance = round_down(adistance, memtier_adistance_chunk_size); // set adistance to 256
 	/*
 	 * If the memtype is already part of a memory tier,
 	 * just return that.
@@ -191,10 +192,10 @@ static struct memory_tier *find_create_memory_tier(struct memory_dev_type *memty
 		return ERR_PTR(-EINVAL);
 	}
 
-	list_for_each_entry(memtier, &memory_tiers, list) {
-		if (adistance == memtier->adistance_start) {
+	list_for_each_entry(memtier, &memory_tiers, list) { // 메모리 계층 리스트를 순회하며 주어진 메모리 유형의 추상 거리와 비교
+		if (adistance == memtier->adistance_start) { // 주어진 메모리 유형의 추상 거리가 이미 존재하는 메모리 계층의 시작 거리와 같다면
 			goto link_memtype;
-		} else if (adistance < memtier->adistance_start) {
+		} else if (adistance < memtier->adistance_start) { // 주어진 메모리 유형의 추상 거리가 이미 존재하는 메모리 계층의 시작 거리보다 작다면
 			found_slot = true;
 			break;
 		}
@@ -212,7 +213,7 @@ static struct memory_tier *find_create_memory_tier(struct memory_dev_type *memty
 	else
 		list_add_tail(&new_memtier->list, &memory_tiers);
 
-	new_memtier->dev.id = adistance >> MEMTIER_CHUNK_BITS;
+	new_memtier->dev.id = adistance >> MEMTIER_CHUNK_BITS; // 256 >> 7 = 32
 	new_memtier->dev.bus = &memory_tier_subsys;
 	new_memtier->dev.release = memory_tier_device_release;
 	new_memtier->dev.groups = memtier_dev_groups;
@@ -263,7 +264,7 @@ bool node_is_toptier(int node)
 		toptier = true;
 		goto out;
 	}
-	if (memtier->adistance_start <= top_tier_adistance)
+	if (memtier->adistance_start <= top_tier_adistance) 
 		toptier = true;
 	else
 		toptier = false;
@@ -298,6 +299,14 @@ void node_get_allowed_targets(pg_data_t *pgdat, nodemask_t *targets)
  * from @node; NUMA_NO_NODE if @node is terminal.  This does not keep
  * @node online or guarantee that it *continues* to be the next demotion
  * target.
+ */
+/**
+ * next_demotion_node() - 강등 경로에서 다음 노드를 가져옴
+ * @node: 다음 노드를 찾기 위한 시작 노드
+ *
+ * 반환값: @node로부터 시작하는 메모리 노드 강등 경로 계층에서의 다음 노드 ID;
+ * @node가 종단인 경우 NUMA_NO_NODE를 반환. 이는 @node를 온라인 상태로 
+ * 유지하거나 계속해서 다음 강등 대상이 될 것을 보장하지 않습니다.
  */
 int next_demotion_node(int node)
 {
@@ -492,10 +501,10 @@ static struct memory_tier *set_node_memory_tier(int node)
 	if (!node_state(node, N_MEMORY))
 		return ERR_PTR(-EINVAL);
 
-	__init_node_memory_type(node, default_dram_type);
+	__init_node_memory_type(node, default_dram_type); // 노드에 기본 DRAM 유형 할당
 
-	memtype = node_memory_types[node].memtype;
-	node_set(node, memtype->nodes);
+	memtype = node_memory_types[node].memtype; 
+	node_set(node, memtype->nodes); // 노드를 메모리 유형의 노드 마스크에 추가
 	memtier = find_create_memory_tier(memtype);
 	if (!IS_ERR(memtier))
 		rcu_assign_pointer(pgdat->memtier, memtier);
@@ -686,6 +695,14 @@ int mt_perf_to_adistance(struct access_coordinate *perf, int *adist)
 	 * latency, and memory bandwidth of the default DRAM nodes are used as
 	 * the base.
 	 */
+	/**
+	 * 주어진 메모리 유형의 추상 거리를 계산하는 공식
+	 * 주어진 메모리 유형의 추상 거리 = 기본 DRAM 유형의 추상 거리 *
+	 * (읽기 대기 시간 + 쓰기 대기 시간) /
+	 * (기본 DRAM 유형의 읽기 대기 시간 + 쓰기 대기 시간) *
+	 * (기본 DRAM 유형의 읽기 대역폭 + 쓰기 대역폭) /
+	 * (주어진 메모리 유형의 읽기 대역폭 + 쓰기 대역폭)
+	 */
 	*adist = MEMTIER_ADISTANCE_DRAM *
 		(perf->read_latency + perf->write_latency) /
 		(default_dram_perf.read_latency + default_dram_perf.write_latency) *
@@ -803,6 +820,9 @@ static int __init memory_tier_init(void)
 	/*
 	 * For now we can have 4 faster memory tiers with smaller adistance
 	 * than default DRAM tier.
+	 */
+	/**
+	 * default draim tier(top tier) > memory tier1 > memory tier2 > memory tier3
 	 */
 	default_dram_type = alloc_memory_type(MEMTIER_ADISTANCE_DRAM);
 	if (IS_ERR(default_dram_type))

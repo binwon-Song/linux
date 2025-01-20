@@ -2180,6 +2180,11 @@ static inline int __normal_prio(int policy, int rt_prio, int nice)
  * setprio syscalls, and whenever the interactivity
  * estimator recalculates.
  */
+/** 예상되는 일반 우선순위를 계산합니다. 즉, RT 상속을 고려하지 않고 우선순위를 계산합니다. 
+* 상호작용 수정자에 의해 향상될 수 있습니다. 포크, 
+* setprio 시스템 호출 및 상호작용 
+* 추정기가 다시 계산될 때마다 변경됩니다.   
+*/
 static inline int normal_prio(struct task_struct *p)
 {
 	return __normal_prio(p->policy, p->rt_priority, PRIO_TO_NICE(p->static_prio));

@@ -350,6 +350,25 @@ enum lruvec_flags {
  * accesses through page tables. This requires order_base_2(MAX_NR_GENS+1) bits
  * in folio->flags.
  */
+/*
+ * 회수 가능한 페이지는 여러 세대로 나뉩니다. 가장 젊은 세대와 가장 오래된 세대 번호인 max_seq와 min_seq는 단조롭게 증가합니다.
+ * 이들은 가변 크기의 슬라이딩 윈도우 [MIN_NR_GENS, MAX_NR_GENS]를 형성합니다. 
+ * MAX_NR_GENS 내의 오프셋, 즉 gen은 해당 세대의 LRU 목록을 인덱싱합니다.
+ * folio->flags의 gen 카운터는 페이지가 lrugen->folios[] 중 하나에 있을 때 gen+1을 저장합니다. 그렇지 않으면 0을 저장합니다.
+ *
+ * 페이지는 장애가 발생할 때 가장 젊은 세대에 추가됩니다. 노화는 이 페이지를 회수하기 전에 최소 두 번 접근 비트를 확인해야 합니다.
+ * 첫 번째 확인은 초기 장애 시 설정된 접근 비트를 처리합니다. 두 번째 확인은 그 이후로 이 페이지가 사용되지 않았는지 확인합니다.
+ * 이 과정, 즉 두 번째 기회는 최소 두 세대를 필요로 하므로 MIN_NR_GENS가 필요합니다. 
+ * 그리고 /proc/vmstat와 같은 활성/비활성 LRU와 ABI 호환성을 유지하기 위해
+ * 이 두 세대는 활성으로 간주됩니다. 나머지 세대는 존재할 경우 비활성으로 간주됩니다. lru_gen_is_active()를 참조하십시오.
+ *
+ * PG_active는 페이지가 lrugen->folios[] 중 하나에 있는 동안 항상 지워지므로 노화는 이를 걱정할 필요가 없습니다.
+ * 페이지가 비회수 목적으로 격리될 때, 예를 들어 마이그레이션, 활성으로 간주되는 경우 다시 설정됩니다.
+ * lru_gen_add_folio() 및 lru_gen_del_folio()를 참조하십시오.
+ *
+ * MAX_NR_GENS는 4로 설정되어 다중 세대 LRU가 페이지 테이블을 통해 접근을 추적할 때 활성/비활성 LRU의 두 배의 범주를 지원할 수 있습니다.
+ * 이는 folio->flags에 order_base_2(MAX_NR_GENS+1) 비트를 필요로 합니다.
+ */
 #define MIN_NR_GENS		2U
 #define MAX_NR_GENS		4U
 
@@ -1275,6 +1294,11 @@ typedef struct pglist_data {
 	 * zones may be populated, but it is the full list. It is referenced by
 	 * this node's node_zonelists as well as other node's node_zonelists.
 	 */
+	/*
+	* node_zones는 이 노드의 영역들만 포함합니다. 모든 영역이 채워져 있지 않을 수 있지만,
+	* 이것은 전체 목록입니다. 이 노드의 node_zonelists와 다른 노드들의 node_zonelists에서
+	* 참조됩니다.
+	*/
 	struct zone node_zones[MAX_NR_ZONES];
 
 	/*
@@ -1282,6 +1306,10 @@ typedef struct pglist_data {
 	 * Generally the first zones will be references to this node's
 	 * node_zones.
 	 */
+	/*
+	* node_zonelists는 모든 노드의 모든 영역에 대한 참조를 포함합니다.
+	* 일반적으로 첫 번째 영역들은 이 노드의 node_zones에 대한 참조입니다.
+	*/
 	struct zonelist node_zonelists[MAX_ZONELISTS];
 
 	int nr_zones; /* number of populated zones in this node */
@@ -1367,12 +1395,16 @@ typedef struct pglist_data {
 
 #ifdef CONFIG_NUMA_BALANCING
 	/* start time in ms of current promote rate limit period */
+	/* 현재 승격 제한 기간의 시작 시간 */
 	unsigned int nbp_rl_start;
 	/* number of promote candidate pages at start time of current rate limit period */
+	/* 현재 승격 제한 기간의 시작 지점에서의 승격 후보 페이지 수 */
 	unsigned long nbp_rl_nr_cand;
 	/* promote threshold in ms */
+	/* 승격 임계점 시간 */
 	unsigned int nbp_threshold;
 	/* start time in ms of current promote threshold adjustment period */
+	/* 현재 승격 임계점 조정 기간의 시작 시간 */
 	unsigned int nbp_th_start;
 	/*
 	 * number of promote candidate pages at start time of current promote

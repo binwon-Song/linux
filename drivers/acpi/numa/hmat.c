@@ -921,7 +921,7 @@ static int hmat_calculate_adistance(struct notifier_block *self,
 	int *adist = data;
 	int pxm;
 
-	pxm = node_to_pxm(nid);
+	pxm = node_to_pxm(nid); // 노드를 PXM(근접성)으로 변환
 	target = find_mem_target(pxm);
 	if (!target)
 		return NOTIFY_OK;

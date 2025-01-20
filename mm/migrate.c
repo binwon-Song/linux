@@ -2510,6 +2510,7 @@ static int numamigrate_isolate_folio(pg_data_t *pgdat, struct folio *folio)
 	int nr_pages = folio_nr_pages(folio);
 
 	/* Avoid migrating to a node that is nearly full */
+	/* 노드가 거의 가득 차면 마이그레이션 하지 않음 */
 	if (!migrate_balanced_pgdat(pgdat, nr_pages)) {
 		int z;
 
@@ -2551,6 +2552,7 @@ static int numamigrate_isolate_folio(pg_data_t *pgdat, struct folio *folio)
  * Attempt to migrate a misplaced folio to the specified destination
  * node. Caller is expected to have an elevated reference count on
  * the folio that will be dropped by this function before returning.
+ * 폴리오를 노드로 마이그레이트 시도
  */
 int migrate_misplaced_folio(struct folio *folio, struct vm_area_struct *vma,
 			    int node)

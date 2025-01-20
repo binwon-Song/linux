@@ -492,7 +492,7 @@ int __init acpi_numa_init(void)
 
 	if (acpi_disabled)
 		return -EINVAL;
-
+	 //SRAT (System/Static Resource Affinity Table)
 	/*
 	 * Should not limit number with cpu num that is from NR_CPUS or nr_cpus=
 	 * SRAT cpu entries could have different order with that in MADT.

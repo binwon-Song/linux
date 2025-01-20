@@ -8,7 +8,7 @@
 #define typeof_member(T, m)	typeof(((T*)0)->m)
 
 /**
- * container_of - cast a member of a structure out to the containing structure
+ * container_of - cast a member of a structure out to the containing structure  구조체 멤버를 포함하는 구조체를 찾는 매크로
  * @ptr:	the pointer to the member.
  * @type:	the type of the container struct this is embedded in.
  * @member:	the name of the member within the struct.
