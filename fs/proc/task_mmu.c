@@ -2528,7 +2528,7 @@ const struct file_operations proc_pagemap_operations = {
 #endif /* CONFIG_PROC_PAGE_MONITOR */
 
 #ifdef CONFIG_NUMA
-
+/* move to internal.h @binwon
 struct numa_maps {
 	unsigned long pages;
 	unsigned long anon;
@@ -2544,7 +2544,7 @@ struct numa_maps_private {
 	struct proc_maps_private proc_maps;
 	struct numa_maps md;
 };
-
+*/
 static void gather_stats(struct page *page, struct numa_maps *md, int pte_dirty,
 			unsigned long nr_pages)
 {
@@ -2695,6 +2695,7 @@ static const struct mm_walk_ops show_numa_ops = {
 /*
  * Display pages allocated per node and memory policy via /proc.
  */
+// 노드 당 할당된 페이지 및 메모리 정책을 /proc를 통해 표시합니다.
 static int show_numa_map(struct seq_file *m, void *v)
 {
 	struct numa_maps_private *numa_priv = m->private;

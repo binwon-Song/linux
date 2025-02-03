@@ -5001,7 +5001,7 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	 * to record page access time.  So use default value.
 	 */
 	/**
-	 * 티어링 모드에서, 느린 메모리에 있는 페이지의 프로세스 아이디는 페이지 액세스 시간을 위해 사용됨
+	 * 티어링 모드에서, 느린 메모리에 있는 페이지의 cpupid는 페이지 액세스 시간을 위해 사용됨
 	 */
 	if ((sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING) &&
 	    !node_is_toptier(nid)) // 티어링 적용되어있고 탑 티어가 아닐경우 

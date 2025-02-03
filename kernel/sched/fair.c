@@ -2765,6 +2765,11 @@ static void update_task_scan_period(struct task_struct *p,
  * from the dozens-of-seconds NUMA balancing period. Use the scheduler
  * stats only if the task is so new there are no NUMA statistics yet.
  */
+/**
+ * @brief task가 마지막 NUMA 배치 사이클 이후로 *실행된 시간*의 분수를 얻는 함수
+ * 스케줄러도 비슷한 통계를 가지지만, 32ms 주기로 그것들을 감소시키기 때문에 수십초의 NUMA 균형 조정 주기와는 수십 배 차이가 난다.
+ * task가 아직 NUMA 통계가 없는 경우에만 스케줄러 통계를 사용한다.
+ */
 static u64 numa_get_avg_runtime(struct task_struct *p, u64 *period)
 {
 	u64 runtime, delta, now;
@@ -3178,12 +3183,14 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	 * NUMA faults statistics are unnecessary for the slow memory
 	 * node for memory tiering mode.
 	 */
+	// 메모리 티어링 모드에서는 느린 메모리 노드에 대한 NUMA 폴트 통계가 불필요 원격 접근시 빠른 메모리로 옮겨야하기 때문
 	if (!node_is_toptier(mem_node) &&
 	    (sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING ||
 	     !cpupid_valid(last_cpupid)))
 		return;
 
 	/* Allocate buffer to track faults on a per-node basis */
+	// 각각 노드에 대한 폴트를 추적하기 위한 버퍼 할당
 	if (unlikely(!p->numa_faults)) {
 		int size = sizeof(*p->numa_faults) *
 			   NR_NUMA_HINT_FAULT_BUCKETS * nr_node_ids;
@@ -3301,13 +3308,6 @@ static void task_numa_work(struct callback_head *work)
 	struct vma_iterator vmi;
 	bool vma_pids_skipped;
 	bool vma_pids_forced = false;
-
-	/**
-	 * example
-	 */
-	
-
-	////////////
 
 	SCHED_WARN_ON(p != container_of(work, struct task_struct, numa_work));
 
@@ -3446,6 +3446,7 @@ retry_pids:
 		}
 
 		/* RESET access PIDs regularly for old VMAs. */
+		// 오래된 VMAs에 대해 정기적으로 액세스 PID를 재설정합니다.
 		if (mm->numa_scan_seq &&
 				time_after(jiffies, vma->numab_state->pids_active_reset)) {
 			vma->numab_state->pids_active_reset = vma->numab_state->pids_active_reset +
@@ -3465,6 +3466,7 @@ retry_pids:
 		 * Do not scan the VMA if task has not accessed it, unless no other
 		 * VMA candidate exists.
 		 */
+		// 태스크가 접근하지 않은 경우 VMA를 스캔하지 않습니다. 다른 VMA 후보가 없는 경우에만 스캔합니다.
 		if (!vma_pids_forced && !vma_is_accessed(mm, vma)) {
 			vma_pids_skipped = true;
 			trace_sched_skip_vma_numa(mm, vma, NUMAB_SKIP_PID_INACTIVE);
@@ -3477,6 +3479,9 @@ retry_pids:
 			end = min(end, vma->vm_end);
 
 			nr_pte_updates = change_prot_numa(vma, start, end);
+
+			
+
 			/*
 			 * Try to scan sysctl_numa_balancing_size worth of
 			 * hpages that have at least one present PTE that
@@ -6831,6 +6836,9 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	 * Let's add the task's estimated utilization to the cfs_rq's
 	 * estimated utilization, before we update schedutil.
 	 */
+	// 간접적으로 스케줄 유틸이 업데이트됌
+	// 스케줄 유틸은 cfs_rq의 유틸을 보고 주파수를 선택한다.
+	// 스케줄 유틸을 업데이트하기 전에 task의 예상 유틸을 cfs_rq의 예상 유틸에 추가
 	util_est_enqueue(&rq->cfs, p);
 
 	/*

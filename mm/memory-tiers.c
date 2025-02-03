@@ -340,7 +340,7 @@ int next_demotion_node(int node)
 	 */
 	target = node_random(&nd->preferred);
 	rcu_read_unlock();
-
+	
 	return target;
 }
 
