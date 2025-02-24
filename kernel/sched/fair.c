@@ -49,6 +49,8 @@
 #include <linux/task_work.h>
 #include <linux/rbtree_augmented.h>
 
+#include <linux/sched/prio.h>
+
 #include <asm/switch_to.h>
 
 #include "sched.h"
@@ -270,6 +272,8 @@ static void __update_inv_weight(struct load_weight *lw)
  *
  * Or, weight =< lw.weight (because lw.weight is the runqueue weight), thus
  * weight/lw.weight <= 1, and therefore our shift will also be positive.
+ * 
+ * 태스크 실행 시간을 가중치를 고려하여 조정된 실행 시간으로 변환하는 역할
  */
 static u64 __calc_delta(u64 delta_exec, unsigned long weight, struct load_weight *lw)
 {
@@ -286,7 +290,7 @@ static u64 __calc_delta(u64 delta_exec, unsigned long weight, struct load_weight
 		fact >>= fs;
 	}
 
-	fact = mul_u32_u32(fact, lw->inv_weight);
+	fact = mul_u32_u32(fact, lw->inv_weight); // 역 가중치와 곱
 
 	fact_hi = (u32)(fact >> 32);
 	if (fact_hi) {
@@ -295,7 +299,7 @@ static u64 __calc_delta(u64 delta_exec, unsigned long weight, struct load_weight
 		fact >>= fs;
 	}
 
-	return mul_u64_u32_shr(delta_exec, fact, shift);
+	return mul_u64_u32_shr(delta_exec, fact, shift); // 실행 시간을 가중치와 고려하여 조정된 실행 시간으로 변환
 }
 
 /*
@@ -303,8 +307,8 @@ static u64 __calc_delta(u64 delta_exec, unsigned long weight, struct load_weight
  */
 static inline u64 calc_delta_fair(u64 delta, struct sched_entity *se)
 {
-	if (unlikely(se->load.weight != NICE_0_LOAD))
-		delta = __calc_delta(delta, NICE_0_LOAD, &se->load);
+	if (unlikely(se->load.weight != NICE_0_LOAD)) // 나이스 값이 있다면 가중치 계산
+		delta = __calc_delta(delta, NICE_0_LOAD, &se->load); // 가중치 계산
 
 	return delta;
 }
@@ -720,7 +724,7 @@ static void update_entity_lag(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	s64 lag, limit;
 
 	SCHED_WARN_ON(!se->on_rq);
-	lag = avg_vruntime(cfs_rq) - se->vruntime;
+	lag = avg_vruntime(cfs_rq) - se->vruntime; // 지연은 가중치를 고려한 가상 실행시간과 현재 가상 실행시간의 차이
 
 	limit = calc_delta_fair(max_t(u64, 2*se->slice, TICK_NSEC), se);
 	se->vlag = clamp(lag, -limit, limit);
@@ -743,11 +747,14 @@ static void update_entity_lag(struct cfs_rq *cfs_rq, struct sched_entity *se)
  * Note: using 'avg_vruntime() > se->vruntime' is inacurate due
  *       to the loss in precision caused by the division.
  */
+/**
+ * 태스크가 서비스를 받을 수 있는지 확인
+ */
 static int vruntime_eligible(struct cfs_rq *cfs_rq, u64 vruntime)
 {
 	struct sched_entity *curr = cfs_rq->curr;
-	s64 avg = cfs_rq->avg_vruntime;
-	long load = cfs_rq->avg_load;
+	s64 avg = cfs_rq->avg_vruntime; // 가상 실행시간
+	long load = cfs_rq->avg_load; // 평균 가중치
 
 	if (curr && curr->on_rq) {
 		unsigned long weight = scale_load_down(curr->load.weight);
@@ -755,7 +762,7 @@ static int vruntime_eligible(struct cfs_rq *cfs_rq, u64 vruntime)
 		avg += entity_key(cfs_rq, curr) * weight;
 		load += weight;
 	}
-
+	
 	return avg >= (s64)(vruntime - cfs_rq->min_vruntime) * load;
 }
 
@@ -781,7 +788,7 @@ static u64 __update_min_vruntime(struct cfs_rq *cfs_rq, u64 vruntime)
 static void update_min_vruntime(struct cfs_rq *cfs_rq)
 {
 	struct sched_entity *se = __pick_root_entity(cfs_rq);
-	struct sched_entity *curr = cfs_rq->curr;
+	struct sched_entity *curr = cfs_rq->curr; // 현재 작업중인 태스크
 	u64 vruntime = cfs_rq->min_vruntime;
 
 	if (curr) {
@@ -915,6 +922,9 @@ static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq)
 	 * Once selected, run a task until it either becomes non-eligible or
 	 * until it gets a new slice. See the HACK in set_next_entity().
 	 */
+	/*
+	 * 선택된 후, 태스크를 실행하고 태스크가 비선점되거나 새로운 슬라이스를 받을 때까지 실행
+	*/
 	if (sched_feat(RUN_TO_PARITY) && curr && curr->vlag == curr->deadline)
 		return curr;
 
@@ -931,6 +941,10 @@ static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq)
 		/*
 		 * Eligible entities in left subtree are always better
 		 * choices, since they have earlier deadlines.
+		 */
+		/**
+		 * 왼쪽 서브트리에 있는 엔티티가 항상 더 좋은 선택이다.	
+		 * 왜냐하면 더 빠른 데드라인을 가지고 있기 때문이다.
 		 */
 		if (left && vruntime_eligible(cfs_rq,
 					__node_2_se(left)->min_vruntime)) {
@@ -1124,15 +1138,15 @@ static void update_tg_load_avg(struct cfs_rq *cfs_rq)
 
 static s64 update_curr_se(struct rq *rq, struct sched_entity *curr)
 {
-	u64 now = rq_clock_task(rq);
+	u64 now = rq_clock_task(rq); //rq -> clock_task 현재 시간
 	s64 delta_exec;
 
-	delta_exec = now - curr->exec_start;
+	delta_exec = now - curr->exec_start; // 실행된 시간
 	if (unlikely(delta_exec <= 0))
 		return delta_exec;
 
 	curr->exec_start = now;
-	curr->sum_exec_runtime += delta_exec;
+	curr->sum_exec_runtime += delta_exec; // 총 실행 시간
 
 	if (schedstat_enabled()) {
 		struct sched_statistics *stats;
@@ -1184,9 +1198,9 @@ static void update_curr(struct cfs_rq *cfs_rq)
 	if (unlikely(delta_exec <= 0))
 		return;
 
-	curr->vruntime += calc_delta_fair(delta_exec, curr);
+	curr->vruntime += calc_delta_fair(delta_exec, curr); // 실헹 시간이 많을 수록 증가
 	update_deadline(cfs_rq, curr);
-	update_min_vruntime(cfs_rq);
+	update_min_vruntime(cfs_rq); // 런큐에 위치한 가장 작은 런타임을 업데이트 다음 작업을 실행시킬 작업
 
 	if (entity_is_task(curr))
 		update_curr_task(task_of(curr), delta_exec);
@@ -1553,8 +1567,14 @@ pid_t task_numa_group_id(struct task_struct *p)
  * array is for current counters, which are averaged into the
  * first set by task_numa_placement.
  */
+/*
+ * 평균 통계, 공유 및 개인, 메모리 및 CPU는 배열의 첫 번째 절반을 차지합니다.
+ * 배열의 두 번째 절반은 현재 카운터를 위한 것이며, task_numa_placement에 의해 첫 번째 세트로 평균화됩니다.
+ * 2 * (fault_stats * nr_node_id + nid) + priv
+ */
 static inline int task_faults_idx(enum numa_faults_stats s, int nid, int priv)
 {
+
 	return NR_NUMA_HINT_FAULT_TYPES * (s * nr_node_ids + nid) + priv;
 }
 
@@ -1562,6 +1582,8 @@ static inline unsigned long task_faults(struct task_struct *p, int nid)
 {
 	if (!p->numa_faults)
 		return 0;
+	// 로컬 접근 횟수 + 리모트 접근 횟수
+	
 	return p->numa_faults[task_faults_idx(NUMA_MEM, nid, 0)] +
 		p->numa_faults[task_faults_idx(NUMA_MEM, nid, 1)];
 }
@@ -1611,10 +1633,15 @@ static inline unsigned long group_faults_shared(struct numa_group *ng)
  * considered part of a numa group's pseudo-interleaving set. Migrations
  * between these nodes are slowed down, to allow things to settle down.
  */
+/**
+ * 최대값의 1/3 이상의 NUMA 오류를 유발하는 노드는 NUMA 그룹의 의사 인터리빙 세트의 일부로 간주됩니다.
+ * 이러한 노드 간의 마이그레이션은 느려지며, 모든 것이 안정되도록 허용됩니다.
+ */
 #define ACTIVE_NODE_FRACTION 3
 
 static bool numa_is_active_node(int nid, struct numa_group *ng)
 {
+	// 최대값의 1/3 이상
 	return group_faults_cpu(ng, nid) * ACTIVE_NODE_FRACTION > ng->max_faults_cpu;
 }
 
@@ -2678,6 +2705,11 @@ static void numa_group_count_active_nodes(struct numa_group *numa_group)
  * below NUMA_PERIOD_THRESHOLD (where range of ratio is 1..NUMA_PERIOD_SLOTS)
  * the scan period will decrease. Aim for 70% local accesses.
  */
+/*
+ * 스캔 속도를 조정할 때, 기간을 NUMA_PERIOD_SLOTS 증가분으로 나눔
+ * 로컬 비중이 더 높으면 스캔 기간을 높임. 로컬/(로컬+원격) 비율이 NUMA_PERIOD_THRESHOLD보다 낮으면 스캔 기간을 줄임(비율 범위는 1..NUMA_PERIOD_SLOTS)
+ * 로컬 액세스 비율이 70%를 목표로 함
+*/
 #define NUMA_PERIOD_SLOTS 10
 #define NUMA_PERIOD_THRESHOLD 7
 
@@ -2696,7 +2728,7 @@ static void update_task_scan_period(struct task_struct *p,
 
 	unsigned long remote = p->numa_faults_locality[0];
 	unsigned long local = p->numa_faults_locality[1];
-
+	lr_ratio = (local * NUMA_PERIOD_SLOTS) / (local + remote);
 	/*
 	 * If there were no record hinting faults then either the task is
 	 * completely idle or all activity is in areas that are not of interest
@@ -2704,16 +2736,33 @@ static void update_task_scan_period(struct task_struct *p,
 	 * migration then it implies we are migrating too quickly or the local
 	 * node is overloaded. In either case, scan slower
 	 */
-	if (local + shared == 0 || p->numa_faults_locality[2]) {
-		p->numa_scan_period = min(p->numa_scan_period_max,
-			p->numa_scan_period << 1);
+	/*
+	 * 힌트 faults 기록이 없는 경우, task가 완전히 idle인 경우이거나 자동 NUMA 균형에 관심이 없는 영역에 모든 활동이 있는 경우
+	 * 관련된 것은, 이동 실패가 있으면 너무 빨리 이동하거나 로컬 노드가 과부하되었음을 의미함. 어느 경우든 느리게 스캔함
+	 */
+	// if (local + shared == 0 || p->numa_faults_locality[2]) {
+	// 	p->numa_scan_period = min(p->numa_scan_period_max,
+	// 		p->numa_scan_period << 1);
 
-		p->mm->numa_next_scan = jiffies +
-			msecs_to_jiffies(p->numa_scan_period);
+	// 	p->mm->numa_next_scan = jiffies +
+	// 		msecs_to_jiffies(p->numa_scan_period);
 
-		return;
+	// 	return;
+	// }
+	if (local + shared ==0){
+		return
+		if(p->numa_faults_locality[2]){
+			p->numa_scan_period = min(p->numa_scan_period_max, p->numa_scan_period << 1);
+			p->mm->numa_next_scan = jiffies + msecs_to_jiffies(p->numa_scan_period);
+			if (lr_ratio<8)
+				set_user_nice(p,19);
+			else{
+				if(PRIO_TO_NICE((p)->static_prio)==19)
+					set_user_nice(p,0);
+			}
+			return;
+		}
 	}
-
 	/*
 	 * Prepare to scale scan period relative to the current period.
 	 *	 == NUMA_PERIOD_THRESHOLD scan period stays the same
@@ -2721,7 +2770,7 @@ static void update_task_scan_period(struct task_struct *p,
 	 *	 >= NUMA_PERIOD_THRESHOLD scan period increases (scan slower)
 	 */
 	period_slot = DIV_ROUND_UP(p->numa_scan_period, NUMA_PERIOD_SLOTS);
-	lr_ratio = (local * NUMA_PERIOD_SLOTS) / (local + remote);
+	
 	ps_ratio = (private * NUMA_PERIOD_SLOTS) / (private + shared);
 
 	if (ps_ratio >= NUMA_PERIOD_THRESHOLD) {
@@ -3221,6 +3270,10 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	 * actively using should be counted as local. This allows the
 	 * scan rate to slow down when a workload has settled down.
 	 */
+	/*
+	 * 여러 NUMA 노드에 걸쳐 있는 워크로드의 경우, 워크로드가 활성화된 노드 집합 내에서 완전히 발생한 공유 폴트는 로컬로 계산되어야 함
+	 * 이렇게 하면 워크로드가 안정화되면 스캔 속도가 느려짐
+	*/
 	ng = deref_curr_numa_group(p);
 	if (!priv && !local && ng && ng->active_nodes > 1 &&
 				numa_is_active_node(cpu_node, ng) &&
@@ -3243,7 +3296,7 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 
 	p->numa_faults[task_faults_idx(NUMA_MEMBUF, mem_node, priv)] += pages;
 	p->numa_faults[task_faults_idx(NUMA_CPUBUF, cpu_node, priv)] += pages;
-	p->numa_faults_locality[local] += pages;
+	p->numa_faults_locality[local] += pages; // 누적 폴트 수 = 경향성 0 is remote 1 is local access 2 is migrate fail
 }
 
 static void reset_ptenuma_scan(struct task_struct *p)
@@ -3290,6 +3343,21 @@ static bool vma_is_accessed(struct mm_struct *mm, struct vm_area_struct *vma)
 
 #define VMA_PID_RESET_PERIOD (4 * sysctl_numa_balancing_scan_delay)
 
+struct numa_maps {
+	unsigned long pages;
+	unsigned long anon;
+	unsigned long active;
+	unsigned long writeback;
+	unsigned long mapcount_max;
+	unsigned long dirty;
+	unsigned long swapcache;
+	unsigned long node[MAX_NUMNODES];
+};
+
+struct numa_maps_private {
+	struct proc_maps_private proc_maps;
+	struct numa_maps md;
+};
 /*
  * The expensive part of numa migration is done from task_work context.
  * Triggered from task_tick_numa().
@@ -3298,7 +3366,8 @@ static bool vma_is_accessed(struct mm_struct *mm, struct vm_area_struct *vma)
 static void task_numa_work(struct callback_head *work)
 {
 	unsigned long migrate, next_scan, now = jiffies;
-	struct task_struct *p = current;
+	struct task_struc
+	t *p = current;
 	struct mm_struct *mm = p->mm;
 	u64 runtime = p->se.sum_exec_runtime;
 	struct vm_area_struct *vma;
@@ -3308,6 +3377,8 @@ static void task_numa_work(struct callback_head *work)
 	struct vma_iterator vmi;
 	bool vma_pids_skipped;
 	bool vma_pids_forced = false;
+
+	int nid;
 
 	SCHED_WARN_ON(p != container_of(work, struct task_struct, numa_work));
 
@@ -3479,9 +3550,6 @@ retry_pids:
 			end = min(end, vma->vm_end);
 
 			nr_pte_updates = change_prot_numa(vma, start, end);
-
-			
-
 			/*
 			 * Try to scan sysctl_numa_balancing_size worth of
 			 * hpages that have at least one present PTE that
@@ -3604,6 +3672,7 @@ void init_numa_balancing(unsigned long clone_flags, struct task_struct *p)
 
 /*
  * Drive the periodic memory faults..
+ * 주기적인 메모리 폴트를 처리하는 함수
  */
 static void task_tick_numa(struct rq *rq, struct task_struct *curr)
 {
@@ -3879,7 +3948,7 @@ static void reweight_eevdf(struct cfs_rq *cfs_rq, struct sched_entity *se,
 	if (avruntime != se->vruntime) {
 		vlag = (s64)(avruntime - se->vruntime);
 		vlag = div_s64(vlag * old_weight, weight);
-		se->vruntime = avruntime - vlag;
+		se->vruntime = avruntime - vlag; 
 	}
 
 	/*
@@ -3889,14 +3958,15 @@ static void reweight_eevdf(struct cfs_rq *cfs_rq, struct sched_entity *se,
 	 * When the weight changes, the virtual time slope changes and
 	 * we should adjust the relative virtual deadline accordingly.
 	 *
+	 * 가중치가 변할때, 가상 시간 기울기가 변하고 상대적인 가상 데드라인을 그에 맞게 조정해야 함
 	 *	d' = v' + (d - v)*w/w'
 	 *	   = V' - (V - v)*w/w' + (d - v)*w/w'
 	 *	   = V  - (V - v)*w/w' + (d - v)*w/w'
 	 *	   = V  + (d - V)*w/w'
 	 */
-	vslice = (s64)(se->deadline - avruntime);
-	vslice = div_s64(vslice * old_weight, weight);
-	se->deadline = avruntime + vslice;
+	vslice = (s64)(se->deadline - avruntime); // 데드라인에서 전체 태스크 평균 련타임을 제한 값
+	vslice = div_s64(vslice * old_weight, weight); // vslice는 가중치에 따라 조정된 값
+	se->deadline = avruntime + vslice;  // 가상기한이 가장 빠른 태스크가 먼저 실행됨
 }
 
 static void reweight_entity(struct cfs_rq *cfs_rq, struct sched_entity *se,
@@ -5149,6 +5219,9 @@ static inline int util_fits_cpu(unsigned long util,
 	 *   which is what we're enforcing here. A task always fits if
 	 *   uclamp_max <= capacity_orig. But when uclamp_max > capacity_orig,
 	 *   the normal upmigration rules should withhold still.
+	 *   
+	 *   태스는 항상 uclamp_max <= capacity_orig 인 경우에 핏팅한다.
+	 *   그러나 uclamp_max > capacity_orig 인 경우에는 일반적인 업마이그레이션 규칙이 여전히 유지되어야 한다.
 	 *
 	 *   Only exception is when we are on max capacity, then we need to be
 	 *   careful not to block overutilized state. This is so because:

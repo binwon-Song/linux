@@ -2528,7 +2528,6 @@ const struct file_operations proc_pagemap_operations = {
 #endif /* CONFIG_PROC_PAGE_MONITOR */
 
 #ifdef CONFIG_NUMA
-/* move to internal.h @binwon
 struct numa_maps {
 	unsigned long pages;
 	unsigned long anon;
@@ -2544,7 +2543,7 @@ struct numa_maps_private {
 	struct proc_maps_private proc_maps;
 	struct numa_maps md;
 };
-*/
+
 static void gather_stats(struct page *page, struct numa_maps *md, int pte_dirty,
 			unsigned long nr_pages)
 {

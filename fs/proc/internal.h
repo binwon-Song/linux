@@ -295,23 +295,6 @@ struct proc_maps_private {
 #endif
 } __randomize_layout;
 
-// from task_mmu.c (fs/proc/task_mmu.c) @binwon
-struct numa_maps {
-	unsigned long pages;
-	unsigned long anon;
-	unsigned long active;
-	unsigned long writeback;
-	unsigned long mapcount_max;
-	unsigned long dirty;
-	unsigned long swapcache;
-	unsigned long node[MAX_NUMNODES];
-};
-
-struct numa_maps_private {
-	struct proc_maps_private proc_maps;
-	struct numa_maps md;
-};
-
 struct mm_struct *proc_mem_open(struct inode *inode, unsigned int mode);
 
 extern const struct file_operations proc_pid_maps_operations;

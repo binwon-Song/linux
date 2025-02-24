@@ -4,7 +4,7 @@
 
 #define MAX_NICE	19
 #define MIN_NICE	-20
-#define NICE_WIDTH	(MAX_NICE - MIN_NICE + 1)
+#define NICE_WIDTH	(MAX_NICE - MIN_NICE + 1) // 40
 
 /*
  * Priority of a process goes from 0..MAX_PRIO-1, valid RT
@@ -15,16 +15,16 @@
 
 #define MAX_RT_PRIO		100
 
-#define MAX_PRIO		(MAX_RT_PRIO + NICE_WIDTH)
-#define DEFAULT_PRIO		(MAX_RT_PRIO + NICE_WIDTH / 2)
+#define MAX_PRIO		(MAX_RT_PRIO + NICE_WIDTH) // 140
+#define DEFAULT_PRIO		(MAX_RT_PRIO + NICE_WIDTH / 2) // 120
 
 /*
  * Convert user-nice values [ -20 ... 0 ... 19 ]
  * to static priority [ MAX_RT_PRIO..MAX_PRIO-1 ],
  * and back.
  */
-#define NICE_TO_PRIO(nice)	((nice) + DEFAULT_PRIO)
-#define PRIO_TO_NICE(prio)	((prio) - DEFAULT_PRIO)
+#define NICE_TO_PRIO(nice)	((nice) + DEFAULT_PRIO) // 만약 나이스가 0이면 120이 된다.
+#define PRIO_TO_NICE(prio)	((prio) - DEFAULT_PRIO) // 만약 우선순위가 120이면 0이 된다.
 
 /*
  * Convert nice value [19,-20] to rlimit style value [1,40].

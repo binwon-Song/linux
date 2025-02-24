@@ -71,9 +71,9 @@ rb_add_augmented_cached(struct rb_node *node, struct rb_root_cached *tree,
 
 	while (*link) {
 		parent = *link;
-		if (less(node, parent)) {
+		if (less(node, parent)) { // node가 parent보다 작으면
 			link = &parent->rb_left;
-		} else {
+		} else { // node가 parent보다 크면
 			link = &parent->rb_right;
 			leftmost = false;
 		}

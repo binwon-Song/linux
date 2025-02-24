@@ -1519,6 +1519,11 @@ static inline bool zone_is_zone_device(struct zone *zone)
  * populated_zone(). If the whole zone is reserved then we can easily
  * end up with populated_zone() && !managed_zone().
  */
+/*
+ * zone에 buddy 할당자에 의해 관리되는 페이지가 있는 경우 true를 반환합니다.
+ * 모든 회수 결정은 이 함수를 사용해야 하며 populated_zone() 대신 사용해야 합니다.
+ * 전체 영역이 예약되어 있으면 populated_zone() && !managed_zone()로 쉽게 끝날 수 있습니다.
+ */
 static inline bool managed_zone(struct zone *zone)
 {
 	return zone_managed_pages(zone);

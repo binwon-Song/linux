@@ -2466,6 +2466,7 @@ SYSCALL_DEFINE6(move_pages, pid_t, pid, unsigned long, nr_pages,
  * Returns true if this is a safe migration target node for misplaced NUMA
  * pages. Currently it only checks the watermarks which is crude.
  */
+// 잘못된 NUMA 페이지를 위한 안전한 마이그레이션 타겟 노드인 경우 true 반환
 static bool migrate_balanced_pgdat(struct pglist_data *pgdat,
 				   unsigned long nr_migrate_pages)
 {
@@ -2478,6 +2479,7 @@ static bool migrate_balanced_pgdat(struct pglist_data *pgdat,
 			continue;
 
 		/* Avoid waking kswapd by allocating pages_to_migrate pages. */
+		// 마이그레이션할 페이지 수만큼 할당하여 kswapd를 깨우지 않음
 		if (!zone_watermark_ok(zone, 0,
 				       high_wmark_pages(zone) +
 				       nr_migrate_pages,
@@ -2517,7 +2519,7 @@ static int numamigrate_isolate_folio(pg_data_t *pgdat, struct folio *folio)
 		if (!(sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING))
 			return 0;
 		for (z = pgdat->nr_zones - 1; z >= 0; z--) {
-			if (managed_zone(pgdat->node_zones + z))
+			if (managed_zone(pgdat->node_zones + z)) // 관리되는 존인지 확인
 				break;
 		}
 
@@ -2529,22 +2531,22 @@ static int numamigrate_isolate_folio(pg_data_t *pgdat, struct folio *folio)
 			return 0;
 
 		wakeup_kswapd(pgdat->node_zones + z, 0,
-			      folio_order(folio), ZONE_MOVABLE);
-		return 0;
+			      folio_order(folio), ZONE_MOVABLE); // kswapd 깨우기
+		return 0; // 마이그레이션 하지 않음
 	}
 
-	if (!folio_isolate_lru(folio))
+	if (!folio_isolate_lru(folio)) // LRU에서 분리가능하지 않으면 마이그레이션 하지 않음
 		return 0;
 
 	node_stat_mod_folio(folio, NR_ISOLATED_ANON + folio_is_file_lru(folio),
-			    nr_pages);
+			    nr_pages); // 노드 통계 업데이트
 
 	/*
 	 * Isolating the folio has taken another reference, so the
 	 * caller's reference can be safely dropped without the folio
 	 * disappearing underneath us during migration.
 	 */
-	folio_put(folio);
+	folio_put(folio); 
 	return 1;
 }
 

@@ -4929,7 +4929,7 @@ int numa_migrate_prep(struct folio *folio, struct vm_area_struct *vma,
 }
 
 /**
- * 
+ * 힌팅 fault 발생 페이지를 NUMA 노드로 이동시키는 함수
  */
 static vm_fault_t do_numa_page(struct vm_fault *vmf)
 {

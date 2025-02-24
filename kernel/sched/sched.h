@@ -984,9 +984,9 @@ struct rq {
 	/* runqueue lock: */
 	raw_spinlock_t		__lock;
 
-	unsigned int		nr_running;
+	unsigned int		nr_running; /* 런큐에 삽입된 모든 프로세스 개수*/
 #ifdef CONFIG_NUMA_BALANCING
-	unsigned int		nr_numa_running;
+	unsigned int		nr_numa_running; 
 	unsigned int		nr_preferred_running;
 	unsigned int		numa_migrate_on;
 #endif
@@ -1003,7 +1003,7 @@ struct rq {
 #ifdef CONFIG_SMP
 	unsigned int		ttwu_pending;
 #endif
-	u64			nr_switches;
+	u64			nr_switches; // 컨택스트 스위칭 수행 횟수
 
 #ifdef CONFIG_UCLAMP_TASK
 	/* Utilization clamp values based on CPU's RUNNABLE tasks */
@@ -1012,13 +1012,13 @@ struct rq {
 #define UCLAMP_FLAG_IDLE 0x01
 #endif
 
-	struct cfs_rq		cfs;
+	struct cfs_rq		cfs; // 스케줄러 클래스에 해당하는 큐
 	struct rt_rq		rt;
 	struct dl_rq		dl;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* list of leaf cfs_rq on this CPU: */
-	struct list_head	leaf_cfs_rq_list;
+	struct list_head	leaf_cfs_rq_list; // 리프 노드의 cfs_rq 리스트
 	struct list_head	*tmp_alone_branch;
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
@@ -1028,9 +1028,9 @@ struct rq {
 	 * one CPU and if it got migrated afterwards it may decrease
 	 * it on another CPU. Always updated under the runqueue lock:
 	 */
-	unsigned int		nr_uninterruptible;
+	unsigned int		nr_uninterruptible; 
 
-	struct task_struct __rcu	*curr;
+	struct task_struct __rcu	*curr; //점유 중인 실행 중 프로세스의 태스크 디스크립터
 	struct task_struct	*idle;
 	struct task_struct	*stop;
 	unsigned long		next_balance;

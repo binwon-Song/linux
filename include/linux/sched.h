@@ -745,7 +745,7 @@ struct kmap_ctrl {
 #endif
 };
 
-struct task_struct {
+struct stask_struct {
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/*
 	 * For reasons of header soup (see current_thread_info()), this
@@ -1297,6 +1297,11 @@ struct task_struct {
 	 * during the current scan window. When the scan completes, the counts
 	 * in faults_memory and faults_cpu decay and these values are copied.
 	 */
+	/**
+	 * 폴트 메모리 : 노드별 폴트의 지수적 감소 평균. 스케줄링 배치 결정은 이 카운트에 기반. PTE 스캔 기간 동안 값은 일정.
+	 * 폴트 CPU : NUMA 힌트 폴트가 발생했을 때 프로세스가 실행되었던 노드를 추적.
+	 * 폴트 메모리 버퍼 및 폴트 CPU 버퍼 : 현재 스캔 창에서 노드 당 폴트를 기록.
+	 */
 	unsigned long			*numa_faults;
 	unsigned long			total_numa_faults;
 
@@ -1306,7 +1311,7 @@ struct task_struct {
 	 * period is adapted based on the locality of the faults with different
 	 * weights depending on whether they were shared or private faults
 	 */
-	unsigned long			numa_faults_locality[3];
+	unsigned long			numa_faults_locality[5]; // 0: remote, 1: local, 2: failed, 3: remote_buf, 4: local_buf
 
 	unsigned long			numa_pages_migrated;
 #endif /* CONFIG_NUMA_BALANCING */
