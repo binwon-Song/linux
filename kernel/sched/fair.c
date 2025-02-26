@@ -2728,7 +2728,6 @@ static void update_task_scan_period(struct task_struct *p,
 
 	unsigned long remote = p->numa_faults_locality[0];
 	unsigned long local = p->numa_faults_locality[1];
-	lr_ratio = (local * NUMA_PERIOD_SLOTS) / (local + remote);
 	/*
 	 * If there were no record hinting faults then either the task is
 	 * completely idle or all activity is in areas that are not of interest
@@ -2752,14 +2751,15 @@ static void update_task_scan_period(struct task_struct *p,
 	if (local + shared ==0){
 		return
 		if(p->numa_faults_locality[2]){
+			lr_ratio = (local * NUMA_PERIOD_SLOTS) / (local + remote);
 			p->numa_scan_period = min(p->numa_scan_period_max, p->numa_scan_period << 1);
 			p->mm->numa_next_scan = jiffies + msecs_to_jiffies(p->numa_scan_period);
-			if (lr_ratio<8)
-				set_user_nice(p,19);
-			else{
-				if(PRIO_TO_NICE((p)->static_prio)==19)
-					set_user_nice(p,0);
+			if (p->renice_cool){
+				p->renice_cool--;
+				return;
 			}
+			set_user_nice(p,DIV_ROUND_UP(lr_ratio*39,10)-20);
+			p->renice_cool=5;
 			return;
 		}
 	}
@@ -2770,8 +2770,15 @@ static void update_task_scan_period(struct task_struct *p,
 	 *	 >= NUMA_PERIOD_THRESHOLD scan period increases (scan slower)
 	 */
 	period_slot = DIV_ROUND_UP(p->numa_scan_period, NUMA_PERIOD_SLOTS);
-	
+	lr_ratio = (local * NUMA_PERIOD_SLOTS) / (local + remote);
 	ps_ratio = (private * NUMA_PERIOD_SLOTS) / (private + shared);
+
+	if (p->renice_cool){
+		p->renice_cool--;
+		return;
+	}
+	set_user_nice(p,DIV_ROUND_UP(lr_ratio*39,10)-20);
+	p->renice_cool=5;
 
 	if (ps_ratio >= NUMA_PERIOD_THRESHOLD) {
 		/*

@@ -745,7 +745,7 @@ struct kmap_ctrl {
 #endif
 };
 
-struct stask_struct {
+struct task_struct {
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/*
 	 * For reasons of header soup (see current_thread_info()), this
@@ -1311,9 +1311,11 @@ struct stask_struct {
 	 * period is adapted based on the locality of the faults with different
 	 * weights depending on whether they were shared or private faults
 	 */
-	unsigned long			numa_faults_locality[5]; // 0: remote, 1: local, 2: failed, 3: remote_buf, 4: local_buf
+	unsigned long			numa_faults_locality[3]; // 0: remote, 1: local, 2: failed, 3: remote_buf, 4: local_buf
 
 	unsigned long			numa_pages_migrated;
+
+	unsigned short          renice_cool;
 #endif /* CONFIG_NUMA_BALANCING */
 
 #ifdef CONFIG_RSEQ
