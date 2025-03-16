@@ -61,8 +61,7 @@
 #define MADV_HUGEPAGE	14		/* Worth backing with hugepages */
 #define MADV_NOHUGEPAGE	15		/* Not worth backing with hugepages */
 
-#define MADV_DONTDUMP   16		/* Explicity exclude from the core dump,
-					   overrides the coredump filter bits */
+#define MADV_DONTDUMP   16		/* Explicity exclude from the core dump, overrides the coredump filter bits */
 #define MADV_DODUMP	17		/* Clear the MADV_NODUMP flag */
 
 #define MADV_WIPEONFORK 18		/* Zero memory on fork, child only */

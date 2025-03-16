@@ -2731,7 +2731,8 @@ static void update_task_scan_period(struct task_struct *p,
 	/*
 	 * If there were no record hinting faults then either the task is
 	 * completely idle or all activity is in areas that are not of interest
-	 * to automatic numa balancing. Related to that, if there were failed
+	 * to automatic numa balancing.
+	 *  Related to that, if there were failed
 	 * migration then it implies we are migrating too quickly or the local
 	 * node is overloaded. In either case, scan slower
 	 */
@@ -2749,20 +2750,16 @@ static void update_task_scan_period(struct task_struct *p,
 	// 	return;
 	// }
 	if (local + shared ==0){
-		return
-		if(p->numa_faults_locality[2]){
+		p->numa_scan_period = min(p->numa_scan_period_max, p->numa_scan_period << 1);
+		p->mm->numa_next_scan = jiffies + msecs_to_jiffies(p->numa_scan_period);
+		return;
+	}
+	if(p->numa_faults_locality[2]){
 			lr_ratio = (local * NUMA_PERIOD_SLOTS) / (local + remote);
-			p->numa_scan_period = min(p->numa_scan_period_max, p->numa_scan_period << 1);
-			p->mm->numa_next_scan = jiffies + msecs_to_jiffies(p->numa_scan_period);
-			if (p->renice_cool){
-				p->renice_cool--;
-				return;
-			}
-			set_user_nice(p,DIV_ROUND_UP(lr_ratio*39,10)-20);
-			p->renice_cool=5;
+			// set_user_nice(p,DIV_ROUND_UP(lr_ratio*39,10)-20);
+			set_user_nice(p,nice_table[lr_ratio])
 			return;
 		}
-	}
 	/*
 	 * Prepare to scale scan period relative to the current period.
 	 *	 == NUMA_PERIOD_THRESHOLD scan period stays the same
@@ -3304,6 +3301,7 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	p->numa_faults[task_faults_idx(NUMA_MEMBUF, mem_node, priv)] += pages;
 	p->numa_faults[task_faults_idx(NUMA_CPUBUF, cpu_node, priv)] += pages;
 	p->numa_faults_locality[local] += pages; // 누적 폴트 수 = 경향성 0 is remote 1 is local access 2 is migrate fail
+	p->numa_faults_locality[local+3] += pages; // if localis 0, 3 is buf local access 4 is buf remote access 5 is buf migrate fail
 }
 
 static void reset_ptenuma_scan(struct task_struct *p)
@@ -3374,7 +3372,7 @@ static void task_numa_work(struct callback_head *work)
 {
 	unsigned long migrate, next_scan, now = jiffies;
 	struct task_struc
-	t *p = current;
+	struct *p = current;
 	struct mm_struct *mm = p->mm;
 	u64 runtime = p->se.sum_exec_runtime;
 	struct vm_area_struct *vma;

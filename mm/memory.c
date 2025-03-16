@@ -5024,12 +5024,16 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 		flags |= TNF_MIGRATE_FAIL;
 		vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd,
 					       vmf->address, &vmf->ptl);
+		
+		// not valid pte
 		if (unlikely(!vmf->pte))
 			goto out;
 		if (unlikely(!pte_same(ptep_get(vmf->pte), vmf->orig_pte))) {
 			pte_unmap_unlock(vmf->pte, vmf->ptl);
 			goto out;
 		}
+
+		// go out_map if pte is valid
 		goto out_map;
 	}
 
@@ -5046,7 +5050,7 @@ out_map:
 	 * 아키텍처가 비접근 가능 PTE를 구현하는 방식에 따라, 일부는 커널 모드에서
 	 * 접근을 허용할 수 있습니다. 이를 다시 접근 가능하게 만듭니다.
 	 */
-	old_pte = ptep_modify_prot_start(vma, vmf->address, vmf->pte);
+	old_pte = ptep_modify_prot_start(vma, vmf->address, vmf->pte); // protection
 	pte = pte_modify(old_pte, vma->vm_page_prot); 
 	pte = pte_mkyoung(pte); 
 	if (writable)

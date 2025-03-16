@@ -1127,7 +1127,7 @@ static int migrate_folio_unmap(new_folio_t get_new_folio,
 		return MIGRATEPAGE_SUCCESS;
 	}
 
-	dst = get_new_folio(src, private);
+	dst = get_new_folio(src, private); // 남아있는 폴리오 받음
 	if (!dst)
 		return -ENOMEM;
 	*dstp = dst;
