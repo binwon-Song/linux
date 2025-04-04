@@ -5038,7 +5038,7 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	}
 
 out:
-	if (nid != NUMA_NO_NODE) // 마이그레이트 실패
+	if (nid != NUMA_NO_NODE) // numa protection
 		task_numa_fault(last_cpupid, nid, 1, flags); //폴트 발생
 	return 0;
 out_map:

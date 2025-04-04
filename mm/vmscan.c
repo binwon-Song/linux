@@ -945,6 +945,9 @@ static struct folio *alloc_demote_folio(struct folio *src,
  * Take folios on @demote_folios and attempt to demote them to another node.
  * Folios which are not demoted are left on @demote_folios.
  */
+/*
+ * 강등 폴리로에서 폴리오를 가져와서 다른 노드로 강등을 시도합니다.
+ */
 static unsigned int demote_folio_list(struct list_head *demote_folios,
 				     struct pglist_data *pgdat)
 {
@@ -1045,7 +1048,7 @@ retry:
 			goto activate_locked;
 
 		if (!sc->may_unmap && folio_mapped(folio))
-			goto keep_locked;
+			goto keep_locked; // unlock folio
 
 		/* folio_update_gen() tried to promote this page? */
 		if (lru_gen_enabled() && !ignore_references &&
@@ -1057,6 +1060,7 @@ retry:
 		 * reclaim_congested. kswapd will stall and start writing
 		 * folios if the tail of the LRU is all dirty unqueued folios.
 		 */
+		// 더러운 페이지의 수는 노드가 reclaim_congested 표시되는지 여부를 결정합니다. LRU의 꼬리가 모두 더러운 미확인 Folios라면 KSWAPD는 멈추고 Folios를 쓰기 시작합니다.
 		folio_check_dirty_writeback(folio, &dirty, &writeback);
 		if (dirty || writeback)
 			stat->nr_dirty += nr_pages;
@@ -3224,7 +3228,7 @@ static int should_skip_vma(unsigned long start, unsigned long end, struct mm_wal
 /*
  * Some userspace memory allocators map many single-page VMAs. Instead of
  * returning back to the PGD table for each of such VMAs, finish an entire PMD
- * table to reduce zigzags and improve cache performance.
+ * table to reduce zigzags and improve cache performance.fgdfgfd
  */
 static bool get_next_vma(unsigned long mask, unsigned long size, struct mm_walk *args,
 			 unsigned long *vm_start, unsigned long *vm_end)
@@ -7160,6 +7164,12 @@ kswapd_try_sleep:
  * pgdat.  It will wake up kcompactd after reclaiming memory.  If kswapd reclaim
  * has failed or is not needed, still wake up kcompactd if only compaction is
  * needed.
+ */
+/*
+ * 여유 메모리가 부족하거나 고차 메모리에 대해 너무 조각화되어 있는 경우. 
+ * kswapd가 다시 활성화되어야하는지 확인하고, 
+ * zone의 pgdat에 대해 kswapd를 깨웁니다. 
+ * 메모리 회수 후 kcompactd를 깨웁니다. kswapd 회수가 실패하거나 필요하지 않은 경우, 단순히 압축 만 필요한 경우 kcompactd를 깨웁니다.
  */
 void wakeup_kswapd(struct zone *zone, gfp_t gfp_flags, int order,
 		   enum zone_type highest_zoneidx)

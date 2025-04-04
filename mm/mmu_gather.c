@@ -332,6 +332,8 @@ static void __tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm,
  *
  * Called to initialize an (on-stack) mmu_gather structure for page-table
  * tear-down from @mm.
+ * 
+ * 구조체 mmu_gather를 초기화하는 함수. 주소 공간의 페이지 테이블을 해제하기 위해 사용된다.
  */
 void tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm)
 {

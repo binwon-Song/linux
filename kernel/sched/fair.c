@@ -904,7 +904,7 @@ struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq)
 {
 	struct rb_node *node = cfs_rq->tasks_timeline.rb_root.rb_node;
-	struct sched_entity *se = __pick_first_entity(cfs_rq);
+	struct sched_entity *se = __pick_first_entity(cfs_rq); //left most rb tree node
 	struct sched_entity *curr = cfs_rq->curr;
 	struct sched_entity *best = NULL;
 
@@ -2728,6 +2728,11 @@ static void update_task_scan_period(struct task_struct *p,
 
 	unsigned long remote = p->numa_faults_locality[0];
 	unsigned long local = p->numa_faults_locality[1];
+
+    unsigned long buf_remote = p->numa_faults_locality[3];
+	unsigned long buf_local = p->numa_faults_locality[4];
+    int n_pid=p->pid;
+    int n_ppid=p->real_parent->pid;
 	/*
 	 * If there were no record hinting faults then either the task is
 	 * completely idle or all activity is in areas that are not of interest
@@ -2740,26 +2745,59 @@ static void update_task_scan_period(struct task_struct *p,
 	 * 힌트 faults 기록이 없는 경우, task가 완전히 idle인 경우이거나 자동 NUMA 균형에 관심이 없는 영역에 모든 활동이 있는 경우
 	 * 관련된 것은, 이동 실패가 있으면 너무 빨리 이동하거나 로컬 노드가 과부하되었음을 의미함. 어느 경우든 느리게 스캔함
 	 */
-	// if (local + shared == 0 || p->numa_faults_locality[2]) {
-	// 	p->numa_scan_period = min(p->numa_scan_period_max,
-	// 		p->numa_scan_period << 1);
+	if (local + shared == 0 || p->numa_faults_locality[2]) {
+		p->numa_scan_period = min(p->numa_scan_period_max,
+			p->numa_scan_period << 1);
 
-	// 	p->mm->numa_next_scan = jiffies +
-	// 		msecs_to_jiffies(p->numa_scan_period);
+		p->mm->numa_next_scan = jiffies +
+			msecs_to_jiffies(p->numa_scan_period);
 
-	// 	return;
-	// }
-	if (local + shared ==0){
-		p->numa_scan_period = min(p->numa_scan_period_max, p->numa_scan_period << 1);
-		p->mm->numa_next_scan = jiffies + msecs_to_jiffies(p->numa_scan_period);
 		return;
 	}
-	if(p->numa_faults_locality[2]){
-			lr_ratio = (local * NUMA_PERIOD_SLOTS) / (local + remote);
-			// set_user_nice(p,DIV_ROUND_UP(lr_ratio*39,10)-20);
-			set_user_nice(p,nice_table[lr_ratio])
-			return;
-		}
+	if (local + shared == 0){
+        p->numa_scan_period = min(p->numa_scan_period_max,
+            p->numa_scan_period << 1);
+
+        p->mm->numa_next_scan = jiffies +
+            msecs_to_jiffies(p->numa_scan_period);
+        return;
+    }
+
+    if ( p->numa_faults_locality[2]) {
+        p->numa_scan_period = min(p->numa_scan_period_max,
+            p->numa_scan_period << 1);
+
+        p->mm->numa_next_scan = jiffies +
+            msecs_to_jiffies(p->numa_scan_period);
+
+        if(n_ppid < 3)
+            return;
+        u64 start=ktime_get_ns();
+        cpu_usage=task_cpu_usage(p);
+        u64 end=ktime_get_ns();
+        printk("cpu profile time : %llu",end-start);
+        if( cpu_usage < CPU_THRESHOLD )
+            return;
+        lr_ratio = (buf_local * NUMA_PERIOD_SLOTS) / (buf_local + buf_remote);
+        set_user_nice(p,nice_table[lr_ratio]);
+        //memset(p->numa_faults_locality, 0, sizeof(p->numa_faults_locality));
+        printk("[@binwon] mg_fail lr_ratio : %d, pid : %d, ppid : %d, local : %d, remote : %d, renice value : %d, mg_fail : %d",lr_ratio,n_pid,n_ppid,buf_local,buf_remote,nice_table[lr_ratio],p->numa_faults_locality[2]);
+        p->numa_faults_locality[3]=0; // buf local
+        p->numa_faults_locality[4]=0; // buf remote
+        p->numa_faults_locality[2]=0; // migrate count init
+        return;
+    }
+
+
+    if(n_ppid > 2){
+        cpu_usage=task_cpu_usage(p);
+        printk("[@binwon] process[%s] %d, cpu usage : %d",p->comm,n_pid,cpu_usage);
+        if( cpu_usage < CPU_THRESHOLD )
+            return;
+        lr_ratio = (buf_local * NUMA_PERIOD_SLOTS) / (buf_local + buf_remote);
+        set_user_nice(p,nice_table[lr_ratio]);
+        printk("[@binwon] mg_not_fail lr_ratio : %d, pid : %d, local : %d, remote : %d, renice value : %d",lr_ratio,p->pid,local,remote,nice_table[lr_ratio]);
+    }
 	/*
 	 * Prepare to scale scan period relative to the current period.
 	 *	 == NUMA_PERIOD_THRESHOLD scan period stays the same
@@ -3301,7 +3339,7 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	p->numa_faults[task_faults_idx(NUMA_MEMBUF, mem_node, priv)] += pages;
 	p->numa_faults[task_faults_idx(NUMA_CPUBUF, cpu_node, priv)] += pages;
 	p->numa_faults_locality[local] += pages; // 누적 폴트 수 = 경향성 0 is remote 1 is local access 2 is migrate fail
-	p->numa_faults_locality[local+3] += pages; // if localis 0, 3 is buf local access 4 is buf remote access 5 is buf migrate fail
+	// p->numa_faults_locality[local+3] += pages; // if localis 0, 3 is buf local access 4 is buf remote access 5 is buf migrate fail
 }
 
 static void reset_ptenuma_scan(struct task_struct *p)
@@ -3347,22 +3385,6 @@ static bool vma_is_accessed(struct mm_struct *mm, struct vm_area_struct *vma)
 }
 
 #define VMA_PID_RESET_PERIOD (4 * sysctl_numa_balancing_scan_delay)
-
-struct numa_maps {
-	unsigned long pages;
-	unsigned long anon;
-	unsigned long active;
-	unsigned long writeback;
-	unsigned long mapcount_max;
-	unsigned long dirty;
-	unsigned long swapcache;
-	unsigned long node[MAX_NUMNODES];
-};
-
-struct numa_maps_private {
-	struct proc_maps_private proc_maps;
-	struct numa_maps md;
-};
 /*
  * The expensive part of numa migration is done from task_work context.
  * Triggered from task_tick_numa().
@@ -3371,8 +3393,7 @@ struct numa_maps_private {
 static void task_numa_work(struct callback_head *work)
 {
 	unsigned long migrate, next_scan, now = jiffies;
-	struct task_struc
-	struct *p = current;
+	struct task_struct *p = current;
 	struct mm_struct *mm = p->mm;
 	u64 runtime = p->se.sum_exec_runtime;
 	struct vm_area_struct *vma;
@@ -3553,7 +3574,7 @@ retry_pids:
 			start = max(start, vma->vm_start);
 			end = ALIGN(start + (pages << PAGE_SHIFT), HPAGE_SIZE);
 			end = min(end, vma->vm_end);
-
+			
 			nr_pte_updates = change_prot_numa(vma, start, end);
 			/*
 			 * Try to scan sysctl_numa_balancing_size worth of
